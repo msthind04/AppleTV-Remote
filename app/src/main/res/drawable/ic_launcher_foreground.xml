@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Siri Remote silhouette. Buttons are cut out with evenOdd so the adaptive
+  icon's background colour shows through them.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M50.62,31.68 H57.38 A5.08,5.08 0 0 1 62.46,36.76 V71.24 A5.08,5.08 0 0 1 57.38,76.32 H50.62 A5.08,5.08 0 0 1 45.54,71.24 V36.76 A5.08,5.08 0 0 1 50.62,31.68 Z M47.15,41.9 A6.26,6.26 0 1 0 59.67,41.9 A6.26,6.26 0 1 0 47.15,41.9 Z M48.64,52.48 A1.91,1.91 0 1 0 52.46,52.48 A1.91,1.91 0 1 0 48.64,52.48 Z M54.81,52.48 A1.91,1.91 0 1 0 58.64,52.48 A1.91,1.91 0 1 0 54.81,52.48 Z M48.64,58.37 A1.91,1.91 0 1 0 52.46,58.37 A1.91,1.91 0 1 0 48.64,58.37 Z M48.64,64.22 A1.91,1.91 0 1 0 52.46,64.22 A1.91,1.91 0 1 0 48.64,64.22 Z M56.88,56.63 H56.88 A1.91,1.91 0 0 1 58.79,58.55 V64.94 A1.91,1.91 0 0 1 56.88,66.86 H56.88 A1.91,1.91 0 0 1 54.96,64.94 V58.55 A1.91,1.91 0 0 1 56.88,56.63 Z" />
+</vector>

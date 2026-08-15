@@ -1,0 +1,15 @@
+# Gradle / build output
+build/
+.gradle/
+!gradle/wrapper/gradle-wrapper.jar
+
+# Machine-specific SDK location
+local.properties
+
+# IDE
+.idea/
+*.iml
+.kotlin/
+
+# OS
+.DS_Store
