@@ -1,7 +1,16 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     kotlin("android")
     kotlin("plugin.compose")
+}
+
+// Release signing is optional: the project builds without a keystore so that
+// contributors and CI can compile it. keystore.properties is gitignored.
+val keystoreProperties = Properties().apply {
+    val f = rootProject.file("keystore.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
 }
 
 android {
@@ -16,6 +25,21 @@ android {
         versionName = "1.0"
     }
 
+    // Wire logging dumps frame hex, including pairing traffic. Off unless
+    // explicitly requested: ./gradlew assembleDebug -PwireLogging=true
+    val wireLogging = (project.findProperty("wireLogging") as String?) ?: "false"
+
+    signingConfigs {
+        if (keystoreProperties.containsKey("storeFile")) {
+            create("release") {
+                storeFile = file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
             // material-icons-extended ships thousands of unused vectors; R8
@@ -26,9 +50,12 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+            buildConfigField("boolean", "WIRE_LOGGING", "false")
+            signingConfig = signingConfigs.findByName("release")
         }
         debug {
             isMinifyEnabled = false
+            buildConfigField("boolean", "WIRE_LOGGING", wireLogging)
         }
     }
 

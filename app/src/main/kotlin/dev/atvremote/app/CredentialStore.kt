@@ -6,10 +6,14 @@ import dev.atvremote.protocol.hap.Credentials
 /**
  * Persists pairing credentials per device.
  *
- * These live in app-private storage, which is sandboxed from other apps. They
- * are stored in the clear there, which is the same posture as the desktop
- * reference implementation; anyone with root or a backup of the app's data
- * directory could reuse them, so backups are disabled in the manifest.
+ * Values are encrypted with a key held in the Android Keystore (see
+ * [SecureStore]) before being written to app-private storage. Credentials
+ * grant complete control of an Apple TV, so app-private storage alone is not
+ * treated as sufficient: on a rooted device, or from a backup of the data
+ * directory, plaintext would be trivially recoverable.
+ *
+ * Backups are additionally disabled in the manifest, since Keystore-wrapped
+ * ciphertext cannot be decrypted after a restore onto different hardware.
  */
 class CredentialStore(context: Context) {
 
@@ -17,11 +21,22 @@ class CredentialStore(context: Context) {
         .getSharedPreferences("pairings", Context.MODE_PRIVATE)
 
     fun save(key: String, credentials: Credentials) {
-        prefs.edit().putString(key, credentials.serialize()).apply()
+        prefs.edit().putString(key, SecureStore.encrypt(credentials.serialize())).apply()
     }
 
-    fun load(key: String): Credentials? =
-        prefs.getString(key, null)?.let { runCatching { Credentials.parse(it) }.getOrNull() }
+    fun load(key: String): Credentials? {
+        val stored = prefs.getString(key, null) ?: return null
+
+        SecureStore.decrypt(stored)?.let { plaintext ->
+            return runCatching { Credentials.parse(plaintext) }.getOrNull()
+        }
+
+        // Written by a build that predates encryption: parse it, then rewrite
+        // it encrypted so the plaintext does not survive.
+        val legacy = runCatching { Credentials.parse(stored) }.getOrNull() ?: return null
+        save(key, legacy)
+        return legacy
+    }
 
     fun forget(key: String) {
         prefs.edit().remove(key).apply()

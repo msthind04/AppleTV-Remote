@@ -1,4 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Apple TV Remote</string>
+    <!--
+      "<Product> for Apple TV" is the referential form Apple's trademark
+      guidelines permit; "Apple TV <Product>" would imply an Apple product.
+    -->
+    <string name="app_name">Remote for Apple TV</string>
+    <string name="disclaimer">Not affiliated with Apple Inc. Apple TV and AirPlay are trademarks of Apple Inc.</string>
 </resources>

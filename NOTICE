@@ -1,0 +1,17 @@
+Remote for Apple TV
+Copyright 2026 The Remote for Apple TV contributors
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+This product includes software derived from pyatv
+(https://github.com/postlund/pyatv), Copyright (c) 2020 Pierre Stahl,
+licensed under the MIT License. See THIRD_PARTY_NOTICES.md.
+
+This project is not affiliated with, authorized by, endorsed by, or in any
+way officially connected with Apple Inc. "Apple", "Apple TV", "AirPlay" and
+"Siri" are trademarks of Apple Inc., registered in the U.S. and other
+countries. They are used here solely to describe compatibility.

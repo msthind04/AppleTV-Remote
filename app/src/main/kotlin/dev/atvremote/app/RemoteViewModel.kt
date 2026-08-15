@@ -78,7 +78,7 @@ class RemoteViewModel(app: Application) : AndroidViewModel(app) {
     val state: StateFlow<UiState> = _state.asStateFlow()
 
     init {
-        dev.atvremote.protocol.Log.enabled = BuildConfig.DEBUG
+        dev.atvremote.protocol.Log.enabled = BuildConfig.WIRE_LOGGING
         scan()
     }
 

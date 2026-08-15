@@ -30,8 +30,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.sp
+import dev.atvremote.app.R
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -45,7 +48,7 @@ fun DeviceListScreen(state: UiState, vm: RemoteViewModel) {
             .padding(24.dp)
     ) {
         Text(
-            "Apple TV Remote",
+            stringResource(R.string.app_name),
             fontSize = 28.sp,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onBackground,
@@ -107,6 +110,15 @@ fun DeviceListScreen(state: UiState, vm: RemoteViewModel) {
                 Text("Scan again")
             }
         }
+
+        Spacer(Modifier.height(10.dp))
+        Text(
+            stringResource(R.string.disclaimer),
+            fontSize = 10.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
 }
 

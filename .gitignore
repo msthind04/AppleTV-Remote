@@ -13,3 +13,8 @@ local.properties
 
 # OS
 .DS_Store
+
+# Local release signing (keystore path + passwords)
+keystore.properties
+*.jks
+*.keystore
