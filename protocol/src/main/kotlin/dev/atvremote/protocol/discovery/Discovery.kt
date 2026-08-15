@@ -10,8 +10,13 @@ data class AppleTvDevice(
     /** Stable per-device identifier advertised as rpMRtID. */
     val identifier: String? = null,
 ) {
-    /** Key used to store credentials for this device. */
-    val credentialKey: String get() = identifier ?: "$address-$port"
+    /**
+     * Key used to store credentials for this device.
+     *
+     * Deliberately excludes the port: an Apple TV rotates its ephemeral
+     * Companion port, so including it would orphan the stored pairing.
+     */
+    val credentialKey: String get() = identifier ?: address
 }
 
 const val COMPANION_SERVICE_TYPE = "_companion-link._tcp"

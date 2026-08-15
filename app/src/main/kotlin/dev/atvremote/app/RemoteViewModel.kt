@@ -54,6 +54,7 @@ data class UiState(
     val nowPlaying: NowPlaying? = null,
     val airplayPaired: Boolean = false,
     val nowPlayingError: String? = null,
+    val reconnecting: Boolean = false,
     val padMode: PadMode = PadMode.DPAD,
     val error: String? = null,
     val pairedKeys: Set<String> = emptySet(),
@@ -68,6 +69,7 @@ class RemoteViewModel(app: Application) : AndroidViewModel(app) {
     private val netScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private var remote: AppleTvRemote? = null
+    private var currentDevice: AppleTvDevice? = null
     private var ap2: Ap2Session? = null
     private var airplayConnection: AirPlayConnection? = null
     private var airplayPairing: AirPlayAuth.AirPlayPairing? = null
@@ -186,6 +188,93 @@ class RemoteViewModel(app: Application) : AndroidViewModel(app) {
         pairingSession = null
     }
 
+    /**
+     * Build and connect a remote, wiring up its callbacks.
+     *
+     * Shared by the initial connect and by transparent reconnection, so both
+     * paths get identical event handling.
+     */
+    private suspend fun establish(
+        device: AppleTvDevice,
+        credentials: dev.atvremote.protocol.hap.Credentials,
+    ): AppleTvRemote {
+        remote?.let { runCatching { it.close() } }
+
+        val r = AppleTvRemote(device.address, device.port, credentials, netScope)
+        r.onDisconnect = {
+            // Reflect reality rather than leaving a stale "Connected" label.
+            // The next command reconnects on demand.
+            _state.update { s -> s.copy(nowPlaying = null, capabilities = null) }
+        }
+        // Mirror the first-party remote: when the Apple TV focuses a text
+        // field, present the keyboard automatically; dismiss it when focus
+        // goes away.
+        r.onTextFocus = { session ->
+            _state.update { st ->
+                if (session != null) st.copy(
+                    keyboardOpen = true,
+                    fieldText = session.textBeforeCursor,
+                    checkingField = false,
+                ) else st.copy(
+                    keyboardOpen = false,
+                    fieldText = null,
+                    checkingField = false,
+                )
+            }
+        }
+        r.onCapabilities = { caps ->
+            _state.update { s -> s.copy(capabilities = caps) }
+            if (caps.volume) refreshVolume()
+        }
+        r.connect()
+        return r
+    }
+
+    /**
+     * An Apple TV drops its Companion connection when it sleeps or the network
+     * blips. Rather than surfacing a socket error, rebuild the session and let
+     * the caller retry once.
+     */
+    private suspend fun reconnect(): AppleTvRemote? {
+        val known = currentDevice ?: return null
+        val credentials = store.load(known.credentialKey) ?: return null
+        _state.update { it.copy(reconnecting = true) }
+        return try {
+            // The Apple TV rotates its Companion port, so a cached port is
+            // often already stale by the time we need to reconnect --
+            // connecting to it yields "Connection refused". Rediscover first
+            // and fall back to what we knew if the scan turns up nothing.
+            val device = runCatching {
+                discovery.scan(4000).firstOrNull { it.credentialKey == known.credentialKey }
+            }.getOrNull() ?: known
+            currentDevice = device
+
+            val r = establish(device, credentials)
+            remote = r
+            _state.update { it.copy(reconnecting = false, error = null) }
+            startNowPlaying(device)
+            r
+        } catch (e: Exception) {
+            remote = null
+            _state.update { it.copy(reconnecting = false) }
+            null
+        }
+    }
+
+    private fun isConnectionLost(e: Throwable): Boolean {
+        val message = (e.message ?: "").lowercase()
+        return e is java.io.IOException ||
+            "broken pipe" in message ||
+            "closed" in message ||
+            "reset" in message ||
+            "not connected" in message ||
+            "timed out" in message
+    }
+
+    private fun friendlyError(e: Throwable): String =
+        if (isConnectionLost(e)) "Lost connection to the Apple TV. Check it is awake and on the same network."
+        else e.message ?: "Something went wrong"
+
     private fun connect(device: AppleTvDevice) {
         val credentials = store.load(device.credentialKey) ?: run {
             startPairing(device)
@@ -194,30 +283,7 @@ class RemoteViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { it.copy(busy = true, error = null) }
         netScope.launch {
             try {
-                remote?.close()
-                val r = AppleTvRemote(device.address, device.port, credentials, netScope)
-                r.onDisconnect = { _state.update { s -> s.copy(screen = Screen.DeviceList) } }
-                // Mirror the first-party remote: when the Apple TV focuses a
-                // text field, present the keyboard automatically; dismiss it
-                // when focus goes away.
-                r.onTextFocus = { session ->
-                    _state.update { st ->
-                        if (session != null) st.copy(
-                            keyboardOpen = true,
-                            fieldText = session.textBeforeCursor,
-                            checkingField = false,
-                        ) else st.copy(
-                            keyboardOpen = false,
-                            fieldText = null,
-                            checkingField = false,
-                        )
-                    }
-                }
-                r.onCapabilities = { caps ->
-                    _state.update { s -> s.copy(capabilities = caps) }
-                    if (caps.volume) refreshVolume()
-                }
-                r.connect()
+                val r = establish(device, credentials)
                 remote = r
                 _state.update {
                     it.copy(
@@ -230,6 +296,7 @@ class RemoteViewModel(app: Application) : AndroidViewModel(app) {
                         airplayPaired = store.isAirPlayPaired(device.credentialKey),
                     )
                 }
+                currentDevice = device
                 // Now-playing must come up on every connect. Previously this
                 // only ran straight after AirPlay pairing, so it silently
                 // stopped working on the next app start.
@@ -326,14 +393,33 @@ class RemoteViewModel(app: Application) : AndroidViewModel(app) {
 
     // ------------------------------------------------------------- commands
 
-    /** Fire-and-forget command; surfaces failures without blocking the UI. */
+    /**
+     * Fire-and-forget command.
+     *
+     * If the connection has died since the last command — which an Apple TV
+     * does routinely when it sleeps — reconnect and retry once before
+     * reporting anything to the user.
+     */
     private fun command(block: suspend AppleTvRemote.() -> Unit) {
-        val r = remote ?: return
         netScope.launch {
+            val r = remote
             try {
+                if (r == null) throw java.io.IOException("not connected")
                 withContext(Dispatchers.IO) { r.block() }
             } catch (e: Exception) {
-                _state.update { it.copy(error = e.message) }
+                if (!isConnectionLost(e)) {
+                    _state.update { it.copy(error = friendlyError(e)) }
+                    return@launch
+                }
+                val revived = reconnect()
+                if (revived == null) {
+                    _state.update { it.copy(error = friendlyError(e)) }
+                    return@launch
+                }
+                runCatching { withContext(Dispatchers.IO) { revived.block() } }
+                    .onFailure { retryFailure ->
+                        _state.update { it.copy(error = friendlyError(retryFailure)) }
+                    }
             }
         }
     }

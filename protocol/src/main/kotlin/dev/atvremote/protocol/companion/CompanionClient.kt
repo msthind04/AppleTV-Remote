@@ -59,6 +59,15 @@ class CompanionClient(
 
     fun close() = connection.close()
 
+    /**
+     * Send an empty NoOp frame.
+     *
+     * The Apple TV drops a Companion connection that has been idle for a while
+     * even while it is awake and playing, so something has to keep it warm.
+     * NoOp exists for exactly this and has no side effects on the device.
+     */
+    fun sendNoOp() = connection.send(FrameType.NO_OP, ByteArray(0))
+
     // ------------------------------------------------------------ framing
 
     private fun handleFrame(frame: Frame) {

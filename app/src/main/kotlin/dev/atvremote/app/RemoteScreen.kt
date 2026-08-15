@@ -117,6 +117,7 @@ fun RemoteScreen(device: AppleTvDevice, state: UiState, vm: RemoteViewModel) {
                     color = MaterialTheme.colorScheme.onSurface,
                 )
                 val subtitle = when {
+                    state.reconnecting -> "Reconnecting…"
                     state.capabilities?.volume == true && state.volume != null ->
                         "Volume ${(state.volume * 100).toInt()}%"
                     else -> "Connected"

@@ -2,7 +2,11 @@ package dev.atvremote.protocol.companion
 
 import dev.atvremote.protocol.hap.Credentials
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlin.random.Random
 
 /** Buttons available over the Companion HID channel. */
@@ -95,10 +99,11 @@ class AppleTvRemote(
     host: String,
     port: Int,
     private val credentials: Credentials,
-    scope: CoroutineScope,
+    private val scope: CoroutineScope,
     private val deviceName: String = "Android Remote",
 ) {
     private val client = CompanionClient(host, port, scope)
+    private var heartbeatJob: Job? = null
     private var sessionId: Long = 0
     private var touchBaseNanos: Long = System.nanoTime()
 
@@ -157,6 +162,8 @@ class AppleTvRemote(
         sessionStart()
         tvRemoteSessionStart()
 
+        startHeartbeat()
+
         // Ask the device to tell us which controls it can actually route.
         subscribe("_iMC")
 
@@ -167,7 +174,23 @@ class AppleTvRemote(
 
     private var externalEventHandler: ((String, Map<Any?, Any?>) -> Unit)? = null
 
-    fun close() = client.close()
+    private fun startHeartbeat() {
+        heartbeatJob?.cancel()
+        heartbeatJob = scope.launch(Dispatchers.IO) {
+            while (isActive) {
+                delay(HEARTBEAT_INTERVAL_MS)
+                // A failure here is the connection dying; the send path
+                // reports it and callers reconnect on demand.
+                if (runCatching { client.sendNoOp() }.isFailure) return@launch
+            }
+        }
+    }
+
+    fun close() {
+        heartbeatJob?.cancel()
+        heartbeatJob = null
+        client.close()
+    }
 
     private suspend fun sendSystemInfo() {
         client.request(
@@ -397,5 +420,6 @@ class AppleTvRemote(
 
     private companion object {
         const val STEP_MS = 16L
+        const val HEARTBEAT_INTERVAL_MS = 30_000L
     }
 }

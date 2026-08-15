@@ -69,6 +69,8 @@ class CompanionConnection(
     suspend fun connect(timeoutMs: Int = 5000) = withContext(Dispatchers.IO) {
         val s = Socket()
         s.tcpNoDelay = true
+        // Lets the OS notice a peer that vanished without a clean shutdown.
+        s.keepAlive = true
         s.connect(InetSocketAddress(host, port), timeoutMs)
         socket = s
         input = DataInputStream(s.getInputStream().buffered())
@@ -81,6 +83,21 @@ class CompanionConnection(
 
     fun send(type: FrameType, payload: ByteArray) {
         val out = socket?.getOutputStream() ?: throw IOException("not connected")
+        try {
+            sendLocked(out, type, payload)
+        } catch (e: IOException) {
+            // The reader blocks in readFully, so when the peer vanishes without
+            // a clean FIN it never notices; the write is what discovers the
+            // dead connection. Tear down here rather than leaving the UI
+            // believing it is still connected.
+            Log.d { "send failed, treating connection as lost: $e" }
+            close()
+            onClosed?.invoke(e)
+            throw e
+        }
+    }
+
+    private fun sendLocked(out: java.io.OutputStream, type: FrameType, payload: ByteArray) {
         synchronized(sendLock) {
             val c = cipher
             val declaredLength =
@@ -103,6 +120,7 @@ class CompanionConnection(
             out.flush()
         }
     }
+
 
     private fun readLoop() {
         val stream = input ?: return

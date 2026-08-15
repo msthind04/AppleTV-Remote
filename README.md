@@ -63,6 +63,24 @@ the volume, and the device correctly never advertises the capability. Volume is
 expected to work on HDMI-CEC setups. An idle Apple TV often sends no `_iMC`
 event at all, so the controls may stay hidden until something is playing.
 
+### Connection stability
+
+An Apple TV rotates the ephemeral port it advertises for Companion Link, even
+while it is awake and playing. When that happens the existing connection dies,
+and reconnecting to the cached port fails outright. Three things guard against
+this:
+
+- Credentials are keyed on the device's stable `rpMRtID`, never on host:port,
+  so a rotated port never orphans a pairing.
+- Reconnection rediscovers the device over mDNS first rather than trusting the
+  port it last saw.
+- An idle connection is kept warm with periodic `NoOp` frames, and a failed
+  write is treated as a lost connection — the reader blocks in `readFully` and
+  will not notice a peer that vanished without a clean shutdown.
+
+Commands transparently reconnect and retry once, so a dropped connection
+surfaces as a brief pause rather than an error.
+
 ## Why this is non-trivial
 
 Apple publishes no API for controlling an Apple TV. Since tvOS 15 the legacy

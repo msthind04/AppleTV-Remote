@@ -120,7 +120,7 @@ fun main(args: Array<String>): Unit = runBlocking {
 
             val credentials = session.complete(pin)
             credentialsDir.mkdirs()
-            val file = credentialsFile("$host-$port")
+            val file = credentialsFile(host)
             file.writeText(credentials.serialize())
             file.setReadable(false, false)
             file.setReadable(true, true)
@@ -133,7 +133,7 @@ fun main(args: Array<String>): Unit = runBlocking {
             if (args.size < 3) usage()
             val host = args[1]
             val port = args[2].toInt()
-            val file = credentialsFile("$host-$port")
+            val file = credentialsFile(host)
             if (!file.exists()) {
                 println("No credentials for $host:$port - run 'pair $host $port' first.")
                 kotlin.system.exitProcess(1)
@@ -191,6 +191,16 @@ fun main(args: Array<String>): Unit = runBlocking {
                     if (session == null) println("No active text input session.")
                     else println("Session uuid=${session.sessionUuid.size} bytes, " +
                         "text=\"${session.textBeforeCursor}\"")
+                }
+
+                "hold" -> {
+                    // Idle for a while, then send a command: proves the
+                    // connection survives without traffic from us.
+                    val seconds = args.getOrNull(3)?.toIntOrNull() ?: 120
+                    println("Holding an idle connection for ${seconds}s...")
+                    kotlinx.coroutines.delay(seconds * 1000L)
+                    remote.press(Button.MENU)
+                    println("Still alive after ${seconds}s idle - command delivered.")
                 }
 
                 "skip" -> {
