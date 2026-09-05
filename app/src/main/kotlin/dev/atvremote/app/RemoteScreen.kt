@@ -42,6 +42,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Backspace
 import androidx.compose.material.icons.filled.MusicNote
@@ -378,14 +380,18 @@ private fun VolumeRow(vm: RemoteViewModel) {
 }
 
 /**
- * The Siri Remote's click pad as one surface: directional buttons around the
- * rim and a touch surface in the middle.
+ * The Siri Remote's click pad as one surface, and the whole surface is live.
  *
- * The centre streams real touch samples the way the Siri surface does — a drag
- * becomes Press, a run of accelerated Holds, then Release — so tvOS's focus
- * engine gets the velocity information it needs for momentum scrolling. A tap
- * selects; holding without moving is the long press that opens context menus.
- * The rim arrows are plain taps — tvOS repeats a held direction itself.
+ * Gesture classification is positional:
+ *  - a tap inside the centre circle selects; holding it is the long press
+ *    that opens context menus
+ *  - a tap on the rim steers by the dominant axis of the tap position, which
+ *    gives every direction a quadrant-sized target
+ *  - a drag anywhere streams real touch samples (Press, accelerated Holds,
+ *    Release) so momentum scrolling behaves like the hardware remote
+ *
+ * tvOS repeats a held direction itself, so rim holds send the direction once.
+ * The chevrons and the centre circle are visual affordances only.
  */
 @Composable
 private fun TouchPad(
@@ -396,19 +402,15 @@ private fun TouchPad(
     onSelectUp: () -> Unit,
     onTouch: (x: Int, y: Int, phase: TouchPhase) -> Unit,
 ) {
+    val haptics = LocalHapticFeedback.current
+
     BoxWithConstraints(
         modifier = modifier,
         contentAlignment = Alignment.Center,
     ) {
-        // The pad is always as wide as the control bar above it. When the
-        // column has height to spare that makes it a square; when the
-        // now-playing card squeezes the column it becomes a shorter
-        // rectangle, but never narrower than the controls.
         val side = minOf(maxWidth, maxHeight)
         val padHeight = minOf(maxHeight, maxWidth)
-        val rimSize = side * 0.17f
-        val rimInset = side * 0.02f
-        val rimIcon = (rimSize * 0.55f).coerceAtMost(30.dp)
+        val chevron = (side * 0.09f).coerceAtMost(30.dp)
 
         Box(
             modifier = Modifier
@@ -424,10 +426,9 @@ private fun TouchPad(
                     // and a small one would amplify finger tremor into focus
                     // jumps.
                     val refPx = 300.dp.toPx()
+                    val centreRadius = minOf(size.width, size.height) * 0.30f
 
                     awaitEachGesture {
-                        // Unconsumed downs only: a tap that lands on a rim
-                        // arrow belongs to the arrow, not to the pad.
                         val down = awaitFirstDown()
                         val start = down.position
                         val slop = viewConfiguration.touchSlop
@@ -437,6 +438,23 @@ private fun TouchPad(
                         var vy = centre
                         var lastPos = start
                         var lastTime = down.uptimeMillis
+
+                        fun inCentre(pos: Offset): Boolean {
+                            val dx = pos.x - size.width / 2f
+                            val dy = pos.y - size.height / 2f
+                            return hypot(dx, dy) < centreRadius
+                        }
+
+                        fun direction(pos: Offset) {
+                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            val dx = pos.x - size.width / 2f
+                            val dy = pos.y - size.height / 2f
+                            if (abs(dx) > abs(dy)) {
+                                onDirection(if (dx > 0) Button.RIGHT else Button.LEFT)
+                            } else {
+                                onDirection(if (dy > 0) Button.DOWN else Button.UP)
+                            }
+                        }
 
                         fun advance(pos: Offset, time: Long) {
                             val dt = (time - lastTime).coerceAtLeast(1L) / 1000f
@@ -462,7 +480,10 @@ private fun TouchPad(
                                 while (mode == Mode.Undecided) {
                                     val event = awaitPointerEvent()
                                     val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                                    if (change.changedToUp()) { mode = Mode.Tap; break }
+                                    if (change.changedToUp()) {
+                                        mode = if (inCentre(change.position)) Mode.Tap else Mode.RimTap
+                                        break
+                                    }
                                     if ((change.position - start).getDistance() > slop) {
                                         mode = Mode.Drag
                                         onTouch(500, 500, TouchPhase.PRESS)
@@ -475,8 +496,13 @@ private fun TouchPad(
                                 }
                             }
                         } catch (_: TimeoutCancellationException) {
-                            mode = Mode.HoldSelect
-                            onSelectDown()
+                            if (inCentre(start)) {
+                                mode = Mode.HoldSelect
+                                onSelectDown()
+                            } else {
+                                mode = Mode.RimHold
+                                direction(start)
+                            }
                         }
 
                         if (mode == Mode.Tap) { onSelect(); return@awaitEachGesture }
@@ -493,58 +519,50 @@ private fun TouchPad(
                         when (mode) {
                             Mode.Drag -> onTouch(vx.toInt(), vy.toInt(), TouchPhase.RELEASE)
                             Mode.HoldSelect -> onSelectUp()
-                            else -> onSelect()
+                            Mode.RimTap -> direction(start)
+                            // RimHold already steered when the hold began.
+                            else -> Unit
                         }
                     }
                 },
             contentAlignment = Alignment.Center,
         ) {
-            RimDirection(
-                Button.UP,
-                Icons.Default.KeyboardArrowUp,
-                Modifier.align(Alignment.TopCenter).padding(top = rimInset).size(rimSize),
-                rimIcon,
-                stringResource(R.string.cd_up),
-                onDirection,
-            )
-            RimDirection(
-                Button.DOWN,
-                Icons.Default.KeyboardArrowDown,
-                Modifier.align(Alignment.BottomCenter).padding(bottom = rimInset).size(rimSize),
-                rimIcon,
-                stringResource(R.string.cd_down),
-                onDirection,
-            )
-            RimDirection(
-                Button.LEFT,
-                Icons.Default.KeyboardArrowLeft,
-                Modifier.align(Alignment.CenterStart).padding(start = rimInset).size(rimSize),
-                rimIcon,
-                stringResource(R.string.cd_left),
-                onDirection,
-            )
-            RimDirection(
-                Button.RIGHT,
-                Icons.Default.KeyboardArrowRight,
-                Modifier.align(Alignment.CenterEnd).padding(end = rimInset).size(rimSize),
-                rimIcon,
-                stringResource(R.string.cd_right),
-                onDirection,
-            )
-
-            // The centre circle is only the visual affordance of the touch
-            // surface; the gesture handler lives on the whole pad.
+            // Visual affordances only: the centre circle and the rim chevrons.
             Box(
                 modifier = Modifier
-                    .size(side * 0.66f)
+                    .size(side * 0.6f)
                     .clip(CircleShape)
                     .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)),
+            )
+            Icon(
+                Icons.Default.KeyboardArrowUp,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = side * 0.02f).size(chevron),
+            )
+            Icon(
+                Icons.Default.KeyboardArrowDown,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = side * 0.02f).size(chevron),
+            )
+            Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                modifier = Modifier.align(Alignment.CenterStart).padding(start = side * 0.02f).size(chevron),
+            )
+            Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                modifier = Modifier.align(Alignment.CenterEnd).padding(end = side * 0.02f).size(chevron),
             )
         }
     }
 }
 
-private enum class Mode { Undecided, Tap, Drag, HoldSelect }
+private enum class Mode { Undecided, Tap, RimTap, Drag, HoldSelect, RimHold }
 
 /**
  * Fire [onStep] once on touch-down, then keep repeating while the finger stays
