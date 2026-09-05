@@ -248,7 +248,7 @@ class NowPlayingService : Service() {
     private fun createChannel() {
         val channel = NotificationChannel(
             CHANNEL_ID,
-            getString(R.string.nothing_playing),
+            getString(R.string.notif_channel_nowplaying),
             // Media controls are glanceable, not interruptive.
             NotificationManager.IMPORTANCE_LOW,
         ).apply {
@@ -259,7 +259,7 @@ class NowPlayingService : Service() {
     }
 
     companion object {
-        private const val CHANNEL_ID = "now_playing"
+        private const val CHANNEL_ID = "now_playing_v2"
         private const val NOTIFICATION_ID = 1
         private const val SKIP = 10.0
         private const val VOLUME_STEPS = 20

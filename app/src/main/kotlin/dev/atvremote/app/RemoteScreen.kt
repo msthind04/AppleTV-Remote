@@ -93,6 +93,10 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -346,7 +350,7 @@ private fun TransportRow(state: UiState, vm: RemoteViewModel) {
         val isPlaying = state.nowPlaying?.playbackState == PlaybackState.PLAYING
         RoundButton(
             icon = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-            description = if (isPlaying) "Pause" else "Play",
+            description = stringResource(if (isPlaying) R.string.pause else R.string.play),
         ) { vm.press(Button.PLAY_PAUSE) }
 
         RoundButton(Icons.Default.Home, stringResource(R.string.home)) { vm.press(Button.HOME) }
@@ -500,6 +504,7 @@ private fun TouchPad(
                 Icons.Default.KeyboardArrowUp,
                 Modifier.align(Alignment.TopCenter).padding(top = rimInset).size(rimSize),
                 rimIcon,
+                stringResource(R.string.cd_up),
                 onDirection,
             )
             RimDirection(
@@ -507,6 +512,7 @@ private fun TouchPad(
                 Icons.Default.KeyboardArrowDown,
                 Modifier.align(Alignment.BottomCenter).padding(bottom = rimInset).size(rimSize),
                 rimIcon,
+                stringResource(R.string.cd_down),
                 onDirection,
             )
             RimDirection(
@@ -514,6 +520,7 @@ private fun TouchPad(
                 Icons.Default.KeyboardArrowLeft,
                 Modifier.align(Alignment.CenterStart).padding(start = rimInset).size(rimSize),
                 rimIcon,
+                stringResource(R.string.cd_left),
                 onDirection,
             )
             RimDirection(
@@ -521,6 +528,7 @@ private fun TouchPad(
                 Icons.Default.KeyboardArrowRight,
                 Modifier.align(Alignment.CenterEnd).padding(end = rimInset).size(rimSize),
                 rimIcon,
+                stringResource(R.string.cd_right),
                 onDirection,
             )
 
@@ -584,6 +592,7 @@ private fun RimDirection(
     icon: ImageVector,
     modifier: Modifier = Modifier,
     iconSize: Dp,
+    description: String,
     onDirection: (Button) -> Unit,
 ) {
     val haptics = LocalHapticFeedback.current
@@ -598,7 +607,7 @@ private fun RimDirection(
     ) {
         Icon(
             icon,
-            contentDescription = button.name.lowercase(),
+            contentDescription = description,
             tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
             modifier = Modifier.size(iconSize),
         )
@@ -953,6 +962,10 @@ private fun PillButton(
             .clip(RoundedCornerShape(10.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
             .repeatOnHold(onStep = onClick)
+            .semantics {
+                role = Role.Button
+                onClick { onClick(); true }
+            }
             .padding(vertical = 9.dp),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
