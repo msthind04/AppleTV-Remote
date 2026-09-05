@@ -449,7 +449,12 @@ private fun TouchPad(
                     awaitEachGesture {
                         val down = awaitFirstDown()
                         val start = down.position
-                        val slop = viewConfiguration.touchSlop
+                        // Deliberately larger than the system touch slop: a
+                        // tap whose finger drifts a few dp must not turn into
+                        // a micro-swipe — in video players even a tiny
+                        // horizontal swipe skips ±10 seconds, which read as
+                        // mysterious rewinds on centre taps.
+                        val slop = maxOf(viewConfiguration.touchSlop, 20.dp.toPx())
 
                         // Rim vs centre is decided on touch-down, so rim
                         // presses respond the instant the finger lands.
