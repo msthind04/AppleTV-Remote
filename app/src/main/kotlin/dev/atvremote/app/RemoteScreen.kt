@@ -428,7 +428,23 @@ private fun TouchPad(
                     // and a small one would amplify finger tremor into focus
                     // jumps.
                     val refPx = 300.dp.toPx()
-                    val centreRadius = minOf(size.width, size.height) * 0.30f
+                    // A touch more generous than the visual circle (0.30):
+                    // taps near its edge are still selects, and the rim
+                    // chevrons sit far enough out to stay directional.
+                    val centreRadius = minOf(size.width, size.height) * 0.38f
+
+                    fun direction(pos: Offset) {
+                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        val dx = pos.x - size.width / 2f
+                        val dy = pos.y - size.height / 2f
+                        val button = if (abs(dx) > abs(dy)) {
+                            if (dx > 0) Button.RIGHT else Button.LEFT
+                        } else {
+                            if (dy > 0) Button.DOWN else Button.UP
+                        }
+                        onDirectionDown(button)
+                        onDirectionUp(button)
+                    }
 
                     awaitEachGesture {
                         val down = awaitFirstDown()
@@ -463,6 +479,7 @@ private fun TouchPad(
                         var drag = false
                         var tap = false
                         var holdSelect = false
+                        var upPos = start
 
                         var vx = centre
                         var vy = centre
@@ -492,7 +509,7 @@ private fun TouchPad(
                                     while (true) {
                                         val event = awaitPointerEvent()
                                         val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                                        if (change.changedToUp()) { tap = true; break }
+                                        if (change.changedToUp()) { tap = true; upPos = change.position; break }
                                         if ((change.position - start).getDistance() > slop) { drag = true; break }
                                         change.consume()
                                     }
@@ -508,7 +525,7 @@ private fun TouchPad(
                             while (true) {
                                 val event = awaitPointerEvent()
                                 val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                                if (change.changedToUp()) { tap = true; break }
+                                if (change.changedToUp()) { tap = true; upPos = change.position; break }
                                 if ((change.position - start).getDistance() > slop) { drag = true; break }
                                 change.consume()
                             }
@@ -528,7 +545,19 @@ private fun TouchPad(
                         } else {
                             when {
                                 holdSelect -> onSelectUp()
-                                centreDown && tap -> onSelect()
+                                centreDown && tap -> {
+                                    // Classify by the midpoint of the gesture:
+                                    // a tap that drifts a little is still a
+                                    // select unless it clearly left the centre.
+                                    val mid = Offset(
+                                        (start.x + upPos.x) / 2f,
+                                        (start.y + upPos.y) / 2f,
+                                    )
+                                    val dx = mid.x - size.width / 2f
+                                    val dy = mid.y - size.height / 2f
+                                    if (hypot(dx, dy) < centreRadius) onSelect()
+                                    else direction(mid)
+                                }
                                 else -> onDirectionUp(rimDirection ?: return@awaitEachGesture)
                             }
                         }
