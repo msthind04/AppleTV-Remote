@@ -728,6 +728,10 @@ class RemoteViewModel(app: Application) : AndroidViewModel(app) {
     fun selectDown() = command { buttonDown(Button.SELECT) }
     fun selectUp() = command { buttonUp(Button.SELECT) }
 
+    /** Rim direction held down/up; tvOS repeats a held direction itself. */
+    fun padDirectionDown(button: Button) = command { buttonDown(button) }
+    fun padDirectionUp(button: Button) = command { buttonUp(button) }
+
     /**
      * Nudge a sleeping Apple TV. A bare Companion session — connect,
      * authenticate, one WAKE press — is all a sleeping device will answer,

@@ -279,16 +279,17 @@ fun RemoteScreen(device: AppleTvDevice, state: UiState, vm: RemoteViewModel) {
             ) {
                 TouchPad(
                     modifier = Modifier.fillMaxSize(),
-                    onDirection = { vm.press(it) },
+                    onDirectionDown = {
+                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        vm.padDirectionDown(it)
+                    },
+                    onDirectionUp = { vm.padDirectionUp(it) },
                     onSelect = {
                         // OK commits the focused field: fold the panel with it.
                         if (state.keyboardOpen) vm.toggleKeyboard()
                         vm.press(Button.SELECT)
                     },
-                    onSelectDown = {
-                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                        vm.selectDown()
-                    },
+                    onSelectDown = { vm.selectDown() },
                     onSelectUp = { vm.selectUp() },
                     onTouch = { x, y, phase -> vm.touch(x, y, phase) },
                 )
@@ -396,7 +397,8 @@ private fun VolumeRow(vm: RemoteViewModel) {
 @Composable
 private fun TouchPad(
     modifier: Modifier = Modifier,
-    onDirection: (Button) -> Unit,
+    onDirectionDown: (Button) -> Unit,
+    onDirectionUp: (Button) -> Unit,
     onSelect: () -> Unit,
     onSelectDown: () -> Unit,
     onSelectUp: () -> Unit,
@@ -432,29 +434,40 @@ private fun TouchPad(
                         val down = awaitFirstDown()
                         val start = down.position
                         val slop = viewConfiguration.touchSlop
-                        var mode = Mode.Undecided
+
+                        // Rim vs centre is decided on touch-down, so rim
+                        // presses respond the instant the finger lands.
+                        val centreDown = run {
+                            val dx = start.x - size.width / 2f
+                            val dy = start.y - size.height / 2f
+                            hypot(dx, dy) < centreRadius
+                        }
+
+                        var rimDirection: Button? = null
+                        if (!centreDown) {
+                            rimDirection = run {
+                                val dx = start.x - size.width / 2f
+                                val dy = start.y - size.height / 2f
+                                if (abs(dx) > abs(dy)) {
+                                    if (dx > 0) Button.RIGHT else Button.LEFT
+                                } else {
+                                    if (dy > 0) Button.DOWN else Button.UP
+                                }
+                            }
+                            // Rim presses hold the HID key down, so tvOS
+                            // repeats the direction for as long as the finger
+                            // stays; the response is instantaneous.
+                            onDirectionDown(rimDirection)
+                        }
+
+                        var drag = false
+                        var tap = false
+                        var holdSelect = false
 
                         var vx = centre
                         var vy = centre
                         var lastPos = start
                         var lastTime = down.uptimeMillis
-
-                        fun inCentre(pos: Offset): Boolean {
-                            val dx = pos.x - size.width / 2f
-                            val dy = pos.y - size.height / 2f
-                            return hypot(dx, dy) < centreRadius
-                        }
-
-                        fun direction(pos: Offset) {
-                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            val dx = pos.x - size.width / 2f
-                            val dy = pos.y - size.height / 2f
-                            if (abs(dx) > abs(dy)) {
-                                onDirection(if (dx > 0) Button.RIGHT else Button.LEFT)
-                            } else {
-                                onDirection(if (dy > 0) Button.DOWN else Button.UP)
-                            }
-                        }
 
                         fun advance(pos: Offset, time: Long) {
                             val dt = (time - lastTime).coerceAtLeast(1L) / 1000f
@@ -471,57 +484,53 @@ private fun TouchPad(
                             onTouch(vx.toInt(), vy.toInt(), TouchPhase.HOLD)
                         }
 
-                        // Phase 1: within the long-press window, decide tap vs.
-                        // drag vs. hold — the three gestures cannot be told
-                        // apart before either the finger lifts, moves, or the
-                        // timeout fires.
-                        try {
-                            withTimeout(viewConfiguration.longPressTimeoutMillis) {
-                                while (mode == Mode.Undecided) {
-                                    val event = awaitPointerEvent()
-                                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                                    if (change.changedToUp()) {
-                                        mode = if (inCentre(change.position)) Mode.Tap else Mode.RimTap
-                                        break
+                        // Phase 1: for centre touches, wait for up (tap), the
+                        // long-press timeout (held select), or movement (drag).
+                        if (centreDown) {
+                            try {
+                                withTimeout(viewConfiguration.longPressTimeoutMillis) {
+                                    while (true) {
+                                        val event = awaitPointerEvent()
+                                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                        if (change.changedToUp()) { tap = true; break }
+                                        if ((change.position - start).getDistance() > slop) { drag = true; break }
+                                        change.consume()
                                     }
-                                    if ((change.position - start).getDistance() > slop) {
-                                        mode = Mode.Drag
-                                        onTouch(500, 500, TouchPhase.PRESS)
-                                        lastPos = change.position
-                                        lastTime = change.uptimeMillis
-                                        advance(change.position, change.uptimeMillis)
-                                        break
-                                    }
-                                    change.consume()
                                 }
-                            }
-                        } catch (_: TimeoutCancellationException) {
-                            if (inCentre(start)) {
-                                mode = Mode.HoldSelect
+                            } catch (_: TimeoutCancellationException) {
+                                holdSelect = true
                                 onSelectDown()
-                            } else {
-                                mode = Mode.RimHold
-                                direction(start)
+                            }
+                        } else {
+                            // Rim: the direction is already held down; a
+                            // movement past the slop hands the gesture over to
+                            // a swipe.
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                if (change.changedToUp()) { tap = true; break }
+                                if ((change.position - start).getDistance() > slop) { drag = true; break }
+                                change.consume()
                             }
                         }
 
-                        if (mode == Mode.Tap) { onSelect(); return@awaitEachGesture }
-
-                        // Phase 2: track until the finger lifts.
-                        while (true) {
-                            val event = awaitPointerEvent()
-                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                            if (mode == Mode.Drag) advance(change.position, change.uptimeMillis)
-                            if (change.changedToUp()) break
-                            change.consume()
-                        }
-
-                        when (mode) {
-                            Mode.Drag -> onTouch(vx.toInt(), vy.toInt(), TouchPhase.RELEASE)
-                            Mode.HoldSelect -> onSelectUp()
-                            Mode.RimTap -> direction(start)
-                            // RimHold already steered when the hold began.
-                            else -> Unit
+                        if (drag) {
+                            if (rimDirection != null) onDirectionUp(rimDirection)
+                            onTouch(500, 500, TouchPhase.PRESS)
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                advance(change.position, change.uptimeMillis)
+                                if (change.changedToUp()) break
+                                change.consume()
+                            }
+                            onTouch(vx.toInt(), vy.toInt(), TouchPhase.RELEASE)
+                        } else {
+                            when {
+                                holdSelect -> onSelectUp()
+                                centreDown && tap -> onSelect()
+                                else -> onDirectionUp(rimDirection ?: return@awaitEachGesture)
+                            }
                         }
                     }
                 },
