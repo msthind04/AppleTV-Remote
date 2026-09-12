@@ -614,7 +614,7 @@ private fun Modifier.repeatOnHold(
             val heldFor = (change.uptimeMillis - down.uptimeMillis - firstDelayMs)
                 .coerceAtLeast(0L)
             val target = 1 + (heldFor / stepDelayMs).toInt()
-            while (steps <= target) {
+            while (steps < target) {
                 onStep()
                 steps++
             }
