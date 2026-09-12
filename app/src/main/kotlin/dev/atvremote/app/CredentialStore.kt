@@ -1,6 +1,7 @@
 package dev.atvremote.app
 
 import android.content.Context
+import dev.atvremote.protocol.discovery.AppleTvDevice
 import dev.atvremote.protocol.hap.Credentials
 
 /**
@@ -15,7 +16,6 @@ import dev.atvremote.protocol.hap.Credentials
  * Backups are additionally disabled in the manifest, since Keystore-wrapped
  * ciphertext cannot be decrypted after a restore onto different hardware.
  */
-import dev.atvremote.protocol.discovery.AppleTvDevice
 
 class CredentialStore(context: Context) {
 

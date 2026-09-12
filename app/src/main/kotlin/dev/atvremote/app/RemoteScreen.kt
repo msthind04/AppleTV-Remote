@@ -395,13 +395,12 @@ private fun TouchPad(
         contentAlignment = Alignment.Center,
     ) {
         val side = minOf(maxWidth, maxHeight)
-        val padHeight = minOf(maxHeight, maxWidth)
         val chevron = (side * 0.09f).coerceAtMost(30.dp)
 
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(padHeight)
+                .height(side)
                 .clip(RoundedCornerShape(28.dp))
                 .background(MaterialTheme.colorScheme.surface)
                 .pointerInput(Unit) {
@@ -438,8 +437,6 @@ private fun TouchPad(
                         // a micro-swipe — in video players even a tiny
                         // horizontal swipe skips ±10 seconds, which read as
                         // mysterious rewinds on centre taps.
-                        val slop = maxOf(viewConfiguration.touchSlop, RIM_COMMIT_DP.dp.toPx())
-
                         // Rim vs centre is decided on touch-down, so rim
                         // presses respond the instant the finger lands.
                         val centreDown = run {

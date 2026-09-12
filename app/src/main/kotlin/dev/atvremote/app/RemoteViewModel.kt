@@ -531,14 +531,18 @@ class RemoteViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 val r = establish(device, credentials)
                 remote = r
+                // Capabilities arrive during the handshake and the device will
+                // not re-push them, so they survive reconnects to the same
+                // TV — but they must not leak across to a different device:
+                // stale volume routing would capture the phone's volume keys
+                // for a TV that cannot route them.
+                val sameDevice = currentDevice?.credentialKey == device.credentialKey
                 _state.update {
                     it.copy(
                         busy = false,
                         autoConnecting = false,
                         wakeTarget = null,
-                        // NB: capabilities are not reset here — they arrive
-                        // during the handshake above, and the device will not
-                        // re-push them until something changes on its side.
+                        capabilities = if (sameDevice) it.capabilities else null,
                         screen = Screen.Remote(device),
                         apps = emptyList(),
                         volume = null,
@@ -747,10 +751,7 @@ class RemoteViewModel(app: Application) : AndroidViewModel(app) {
                 try {
                     client.connect()
                     client.authenticate(credentials)
-                    client.request(
-                        "_hidC",
-                        mapOf("_hBtS" to 2, "_hidC" to Button.WAKE.code),
-                    )
+                    client.hidButton(Button.WAKE.code, down = false)
                 } finally {
                     client.close()
                 }
