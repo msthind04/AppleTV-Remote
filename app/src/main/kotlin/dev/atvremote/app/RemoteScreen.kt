@@ -115,9 +115,7 @@ import dev.atvremote.protocol.companion.Button
 import dev.atvremote.protocol.companion.TouchAcceleration
 import dev.atvremote.protocol.companion.TouchPhase
 import dev.atvremote.protocol.discovery.AppleTvDevice
-import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.withTimeout
 import kotlin.math.abs
 import kotlin.math.absoluteValue
 import kotlin.math.hypot
@@ -496,19 +494,25 @@ private fun TouchPad(
                         // Phase 1: for centre touches, wait for up (tap), the
                         // long-press timeout (held select), or movement (drag).
                         if (centreDown) {
-                            try {
-                                withTimeout(viewConfiguration.longPressTimeoutMillis) {
-                                    while (true) {
-                                        val event = awaitPointerEvent()
-                                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                                        if (change.changedToUp()) { tap = true; upPos = change.position; break }
-                                        if ((change.position - start).getDistance() > CENTRE_COMMIT_DP.dp.toPx()) { drag = true; break }
-                                        change.consume()
-                                    }
+                            val finished = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                    if (change.changedToUp()) { tap = true; upPos = change.position; break }
+                                    if ((change.position - start).getDistance() > CENTRE_COMMIT_DP.dp.toPx()) { drag = true; break }
+                                    change.consume()
                                 }
-                            } catch (_: TimeoutCancellationException) {
+                                true
+                            }
+                            if (finished == null) {
                                 holdSelect = true
                                 onSelectDown()
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                    if (change.changedToUp()) { upPos = change.position; break }
+                                    change.consume()
+                                }
                             }
                         } else {
                             // Rim: the direction is already held down; a
