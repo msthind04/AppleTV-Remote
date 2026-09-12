@@ -35,7 +35,7 @@ Works with modern Apple TVs, where older DMAP-based remote apps no longer do.
 - **Media notification** — the same controls in the notification shade and on
   the lock screen, so the phone need not be unlocked to use them
 
-## What's new in 2.0
+## What's changed
 
 - The D-pad and trackpad are merged into one Siri-Remote-style pad: directional
   buttons on the rim, a touch surface in the middle, and the whole surface is
