@@ -38,7 +38,7 @@ jobs:
         run: cp app/build/outputs/apk/release/app-release.apk AppleTV-Remote-${GITHUB_REF_NAME}.apk
 
       - name: Attach APK to the release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           files: AppleTV-Remote-*.apk
           generate_release_notes: true
