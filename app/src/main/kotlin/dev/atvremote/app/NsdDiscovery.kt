@@ -27,7 +27,13 @@ class NsdDiscovery(context: Context) : DeviceDiscovery {
     private val nsd = context.applicationContext
         .getSystemService(Context.NSD_SERVICE) as NsdManager
 
-    override suspend fun scan(timeoutMs: Long): List<AppleTvDevice> = withContext(Dispatchers.IO) {
+    override suspend fun scan(timeoutMs: Long): List<AppleTvDevice> = scan(timeoutMs) {}
+
+    /**
+     * Reports each device the moment it resolves, so the list fills in while
+     * discovery is still running instead of arriving all at once at the end.
+     */
+    suspend fun scan(timeoutMs: Long, onResolved: (AppleTvDevice) -> Unit): List<AppleTvDevice> = withContext(Dispatchers.IO) {
         val found = ConcurrentLinkedQueue<NsdServiceInfo>()
 
         val listener = object : NsdManager.DiscoveryListener {
@@ -48,7 +54,7 @@ class NsdDiscovery(context: Context) : DeviceDiscovery {
 
         // Resolve sequentially and skip anything that does not answer in time.
         found.distinctBy { it.serviceName }.mapNotNull { info ->
-            withTimeoutOrNull(3000) { resolve(info) }
+            withTimeoutOrNull(3000) { resolve(info) }?.also { onResolved(it) }
         }
     }
 

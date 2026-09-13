@@ -33,6 +33,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.stringResource
+import dev.atvremote.app.R
 import dev.atvremote.protocol.discovery.AppleTvDevice
 
 @Composable
@@ -49,7 +51,8 @@ fun PinEntryScreen(device: AppleTvDevice, state: UiState, vm: RemoteViewModel) {
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
-            if (forAirPlay) "Enable Now Playing" else "Pair with ${device.name}",
+            if (forAirPlay) stringResource(R.string.pin_enable_now_playing)
+            else stringResource(R.string.pin_pair_with, device.name),
             fontSize = 24.sp,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onBackground,
@@ -57,11 +60,8 @@ fun PinEntryScreen(device: AppleTvDevice, state: UiState, vm: RemoteViewModel) {
         )
         Spacer(Modifier.height(10.dp))
         Text(
-            if (forAirPlay) {
-                "Now Playing uses a separate AirPlay pairing. Enter the new code shown on your TV."
-            } else {
-                "Enter the 4-digit code shown on your TV."
-            },
+            if (forAirPlay) stringResource(R.string.pin_airplay_hint)
+            else stringResource(R.string.pin_hint),
             fontSize = 14.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
@@ -108,21 +108,21 @@ fun PinEntryScreen(device: AppleTvDevice, state: UiState, vm: RemoteViewModel) {
                     color = MaterialTheme.colorScheme.onPrimary,
                 )
                 Spacer(Modifier.width(10.dp))
-                Text("Pairing…")
+                Text(stringResource(R.string.pairing))
             } else {
-                Text("Pair", fontSize = 16.sp)
+                Text(stringResource(R.string.pair), fontSize = 16.sp)
             }
         }
 
         Spacer(Modifier.height(8.dp))
 
         TextButton(onClick = { vm.cancelPairing() }, enabled = !state.busy) {
-            Text("Cancel")
+            Text(stringResource(R.string.cancel))
         }
 
         Spacer(Modifier.height(20.dp))
         Text(
-            "The code expires quickly — if pairing fails, cancel and try again.",
+            stringResource(R.string.pin_expires),
             fontSize = 12.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,

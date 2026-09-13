@@ -1,5 +1,12 @@
 package dev.atvremote.app
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
@@ -11,6 +18,7 @@ import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -34,15 +42,15 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Backspace
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Forward10
-import androidx.compose.material.icons.filled.Gamepad
 import androidx.compose.material.icons.filled.Replay10
-import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.Send
@@ -78,12 +86,19 @@ import androidx.compose.foundation.Image
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import android.graphics.BitmapFactory
+import androidx.activity.compose.BackHandler
 import dev.atvremote.protocol.mrp.NowPlaying
 import dev.atvremote.protocol.mrp.PlaybackState
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.changedToUp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -97,36 +112,48 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import dev.atvremote.protocol.companion.AppInfo
 import dev.atvremote.protocol.companion.Button
+import dev.atvremote.protocol.companion.TouchAcceleration
+import dev.atvremote.protocol.companion.TouchPhase
 import dev.atvremote.protocol.discovery.AppleTvDevice
 import kotlinx.coroutines.delay
 import kotlin.math.abs
 import kotlin.math.absoluteValue
+import kotlin.math.hypot
 
 // combinedClickable, for the power button's tap-versus-hold split.
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun RemoteScreen(device: AppleTvDevice, state: UiState, vm: RemoteViewModel) {
     var showApps by remember { mutableStateOf(false) }
+    // The system back button folds the app drawer away before it ever gets a
+    // chance to leave the remote itself.
+    BackHandler(enabled = showApps) { showApps = false }
     // A hold has no on-screen feedback of its own, so the buzz is the only
     // signal that it registered rather than a tap.
     val haptics = LocalHapticFeedback.current
 
-    LaunchedEffect(showApps) {
-        if (showApps && state.apps.isEmpty()) vm.loadApps()
-    }
-
-    Column(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .windowInsetsPadding(WindowInsets.systemBars)
             .imePadding()
             .padding(horizontal = 20.dp, vertical = 12.dp),
     ) {
+        // Landscape puts the pad and the controls side by side; portrait stacks
+        // them, with the pad taking whatever height is left over.
+        val landscape = maxWidth > maxHeight
+
+        // The drawer is the landscape screen too, so its apps load for it.
+        LaunchedEffect(showApps, landscape) {
+            if ((showApps || landscape) && state.apps.isEmpty()) vm.loadApps()
+        }
+
+        Column(Modifier.fillMaxSize()) {
         // ---- header ----
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
                 Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = "Disconnect",
+                contentDescription = stringResource(R.string.cd_disconnect),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier
                     .size(40.dp)
@@ -143,10 +170,10 @@ fun RemoteScreen(device: AppleTvDevice, state: UiState, vm: RemoteViewModel) {
                     color = MaterialTheme.colorScheme.onSurface,
                 )
                 val subtitle = when {
-                    state.reconnecting -> "Reconnecting…"
+                    state.reconnecting -> stringResource(R.string.reconnecting)
                     state.capabilities?.volume == true && state.volume != null ->
-                        "Volume ${(state.volume * 100).toInt()}%"
-                    else -> "Connected"
+                        stringResource(R.string.volume_percent, (state.volume * 100).toInt())
+                    else -> stringResource(R.string.connected)
                 }
                 Text(
                     subtitle,
@@ -156,7 +183,7 @@ fun RemoteScreen(device: AppleTvDevice, state: UiState, vm: RemoteViewModel) {
             }
             Icon(
                 Icons.Default.Keyboard,
-                contentDescription = "Keyboard",
+                contentDescription = stringResource(R.string.cd_keyboard),
                 tint = if (state.keyboardOpen) MaterialTheme.colorScheme.primary
                 else MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier
@@ -168,7 +195,7 @@ fun RemoteScreen(device: AppleTvDevice, state: UiState, vm: RemoteViewModel) {
             Spacer(Modifier.width(4.dp))
             Icon(
                 Icons.Default.Apps,
-                contentDescription = "Apps",
+                contentDescription = stringResource(R.string.cd_apps),
                 tint = if (showApps) MaterialTheme.colorScheme.primary
                 else MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier
@@ -185,7 +212,7 @@ fun RemoteScreen(device: AppleTvDevice, state: UiState, vm: RemoteViewModel) {
             // panel to open, so it stays on the hold.
             Icon(
                 Icons.Default.PowerSettingsNew,
-                contentDescription = "Control Centre, or hold to wake",
+                contentDescription = stringResource(R.string.cd_power),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier
                     .size(40.dp)
@@ -206,302 +233,444 @@ fun RemoteScreen(device: AppleTvDevice, state: UiState, vm: RemoteViewModel) {
             ErrorBanner(message) { vm.dismissError() }
         }
 
-        if (showApps) {
-            Spacer(Modifier.height(12.dp))
-            AppGrid(state, vm, Modifier.weight(1f))
-        }
-
-        if (state.keyboardOpen) {
+        AnimatedVisibility(
+            visible = state.keyboardOpen,
+            enter = fadeIn() + expandVertically(expandFrom = Alignment.Top),
+            exit = ExitTransition.None,
+        ) {
             Spacer(Modifier.height(12.dp))
             TextEntry(state, vm)
         }
 
-        val playing = state.nowPlaying?.takeIf { it.isActive }
-        if (playing != null) {
-            Spacer(Modifier.height(12.dp))
-            NowPlayingCard(state, playing, vm)
-        } else if (!state.airplayPaired) {
-            Spacer(Modifier.height(12.dp))
-            EnableNowPlaying(device, state, vm)
+
+        // The drawer owns this screen in two cases: opened explicitly, and
+        // landscape — on a big-but-short display the pad has no room to
+        // breathe, and a grid of launchable apps is the better use of the
+        // space. Nothing else: just the apps.
+        AnimatedVisibility(
+            visible = showApps || landscape,
+            modifier = Modifier.weight(1f),
+            enter = fadeIn() + expandVertically(expandFrom = Alignment.Bottom),
+            exit = ExitTransition.None,
+        ) {
+            AppGrid(state, vm, Modifier.fillMaxSize(), columns = if (landscape) 5 else 3)
         }
 
-        // The drawer stands in for the controls rather than pushing them off
-        // screen: a grid of apps needs the room, and the pad is unreachable
-        // underneath it anyway.
-        if (!showApps) {
-            Spacer(Modifier.height(14.dp))
+        if (!(showApps || landscape)) {
+            // Every seam — above the card, around the pad, between the button
+            // rows, and at the page edges — shares the leftover height
+            // equally, while the pad region gets the lion's share so the
+            // square inside it grows to full width whenever the space allows.
+            Spacer(Modifier.weight(1f))
+            NowPlayingSection(device, state, vm)
+            Spacer(Modifier.weight(1f))
 
-            PadModeToggle(state.padMode) { vm.setPadMode(it) }
-
-            Spacer(Modifier.height(10.dp))
-
-            // ---- touch surface: D-pad taps or trackpad swiping ----
-            TouchPad(
-                mode = state.padMode,
+            // Hidden outright while typing: squeezed down to a sliver is the
+            // worst of both worlds, and the pad is useless during text entry.
+            if (!state.keyboardOpen) {
+            Box(
                 modifier = Modifier
+                    .weight(10f)
                     .fillMaxWidth()
-                    .aspectRatio(1f),
-                onDirection = { vm.press(it) },
-                onSelect = { vm.press(Button.SELECT) },
-                onSelectHold = {
-                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                    vm.hold(Button.SELECT)
-                },
-                onSwipe = { sx, sy, ex, ey -> vm.swipe(sx, sy, ex, ey, 220) },
-            )
-
-            Spacer(Modifier.height(20.dp))
-
-            // ---- transport row ----
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly,
+                    .animateContentSize(),
+                contentAlignment = Alignment.Center,
             ) {
-                RoundButton(Icons.AutoMirrored.Filled.ArrowBack, "Menu") { vm.press(Button.MENU) }
-
-                // One button toggles playback, so it shows the action it will
-                // perform. Without now-playing there is no state to reflect, and
-                // it falls back to the play glyph.
-                val isPlaying = state.nowPlaying?.playbackState == PlaybackState.PLAYING
-                RoundButton(
-                    icon = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    description = if (isPlaying) "Pause" else "Play",
-                ) { vm.press(Button.PLAY_PAUSE) }
-
-                RoundButton(Icons.Default.Home, "Home") { vm.press(Button.HOME) }
+                TouchPad(
+                    modifier = Modifier.fillMaxSize(),
+                    onDirectionDown = {
+                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        vm.padDirectionDown(it)
+                    },
+                    onDirectionUp = { vm.padDirectionUp(it) },
+                    onSelect = {
+                        // OK commits the focused field: fold the panel with it.
+                        if (state.keyboardOpen) vm.toggleKeyboard()
+                        vm.press(Button.SELECT)
+                    },
+                    onSelectDown = { vm.selectDown() },
+                    onSelectUp = { vm.selectUp() },
+                    onTouch = { x, y, phase -> vm.touch(x, y, phase) },
+                )
+            }
             }
 
-            // Volume only appears when the Apple TV reports it can route it. With an
-            // IR setup the Siri Remote blasts infrared itself, so nothing on the
-            // network can change the volume and dead buttons would be misleading.
-            if (state.capabilities?.volume == true && playing == null) {
-                Spacer(Modifier.height(16.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                ) {
-                    RoundButton(Icons.Default.VolumeDown, "Volume down") { vm.volumeDown() }
-                    RoundButton(Icons.Default.VolumeUp, "Volume up") { vm.volumeUp() }
-                }
-            }
+            Spacer(Modifier.weight(1f))
+            TransportRow(state, vm)
+            Spacer(Modifier.weight(1f))
+            VolumeRow(vm)
+            Spacer(Modifier.weight(1f))
         }
 
         Spacer(Modifier.height(12.dp))
+        }
     }
 }
 
 /**
- * Combined D-pad and trackpad.
+ * The now-playing card, always visible while paired. Keeping it permanent
+ * (playing or not) keeps the pad's size — and with it the tap-vs-swipe
+ * geometry — identical in every state, which the gesture classifier relies
+ * on. When nothing plays the card simply says so.
+ */
+@Composable
+private fun NowPlayingSection(
+    device: AppleTvDevice,
+    state: UiState,
+    vm: RemoteViewModel,
+) {
+    Spacer(Modifier.height(12.dp))
+    if (state.airplayPaired) NowPlayingCard(state, state.nowPlaying ?: NowPlaying(), vm)
+    else EnableNowPlaying(device, state, vm)
+}
+
+@Composable
+private fun TransportRow(state: UiState, vm: RemoteViewModel) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+    ) {
+        RoundButton(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.menu)) { vm.press(Button.MENU) }
+
+        // One button toggles playback, so it shows the action it will
+        // perform. Without now-playing there is no state to reflect, and
+        // it falls back to the play glyph.
+        val isPlaying = state.nowPlaying?.playbackState == PlaybackState.PLAYING
+        RoundButton(
+            icon = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+            description = stringResource(if (isPlaying) R.string.pause else R.string.play),
+        ) { vm.press(Button.PLAY_PAUSE) }
+
+        RoundButton(Icons.Default.Home, stringResource(R.string.home)) { vm.press(Button.HOME) }
+    }
+}
+
+@Composable
+private fun VolumeRow(vm: RemoteViewModel) {
+    val haptics = LocalHapticFeedback.current
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        // A touch taller than the icon alone so the row balances against the
+        // 64 dp transport buttons above it instead of looking squeezed.
+        PillButton(Icons.Default.VolumeDown, stringResource(R.string.volume_down), Modifier.weight(1f).height(52.dp)) {
+            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+            vm.volumeDown()
+        }
+        PillButton(Icons.Default.VolumeUp, stringResource(R.string.volume_up), Modifier.weight(1f).height(52.dp)) {
+            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+            vm.volumeUp()
+        }
+    }
+}
+
+/**
+ * The Siri Remote's click pad as one surface, and the whole surface is live.
  *
- * A tap near the centre selects; a tap elsewhere maps to the dominant
- * direction, which is what makes it usable one-handed. Dragging sends a real
- * swipe so momentum scrolling in tvOS lists behaves naturally.
+ * Gesture classification is positional:
+ *  - a tap inside the centre circle selects; holding it is the long press
+ *    that opens context menus
+ *  - a tap on the rim steers by the dominant axis of the tap position, which
+ *    gives every direction a quadrant-sized target
+ *  - a drag anywhere streams real touch samples (Press, accelerated Holds,
+ *    Release) so momentum scrolling behaves like the hardware remote
+ *
+ * tvOS repeats a held direction itself, so rim holds send the direction once.
+ * The chevrons and the centre circle are visual affordances only.
  */
 @Composable
 private fun TouchPad(
-    mode: PadMode,
     modifier: Modifier = Modifier,
-    onDirection: (Button) -> Unit,
+    onDirectionDown: (Button) -> Unit,
+    onDirectionUp: (Button) -> Unit,
     onSelect: () -> Unit,
-    onSelectHold: () -> Unit,
-    onSwipe: (Int, Int, Int, Int) -> Unit,
+    onSelectDown: () -> Unit,
+    onSelectUp: () -> Unit,
+    onTouch: (x: Int, y: Int, phase: TouchPhase) -> Unit,
 ) {
-    // Keyed on `mode` so the gesture detectors are rebuilt when it changes.
-    val gestures = when (mode) {
-        PadMode.DPAD -> Modifier.pointerInput(mode) {
-            fun centre(offset: Offset): Boolean {
-                val deadZone = size.width * 0.22f
-                return abs(offset.x - size.width / 2f) < deadZone &&
-                    abs(offset.y - size.height / 2f) < deadZone
-            }
+    val haptics = LocalHapticFeedback.current
 
-            fun direction(offset: Offset) {
-                val dx = offset.x - size.width / 2f
-                val dy = offset.y - size.height / 2f
-                if (abs(dx) > abs(dy)) {
-                    onDirection(if (dx > 0) Button.RIGHT else Button.LEFT)
-                } else {
-                    onDirection(if (dy > 0) Button.DOWN else Button.UP)
-                }
-            }
-
-            detectTapGestures(
-                // Compose fires either onLongPress or onTap, never both, so a
-                // held direction has to be sent from here as well — otherwise
-                // resting on an arrow for half a second sends nothing at all.
-                // Only the centre holds; tvOS repeats directions itself.
-                onLongPress = { offset ->
-                    if (centre(offset)) onSelectHold() else direction(offset)
-                },
-                onTap = { offset ->
-                    if (centre(offset)) onSelect() else direction(offset)
-                },
-            )
-        }
-
-        // One detector rather than a tap one and a drag one side by side, so
-        // the gesture is classified on release when the whole of it is known.
-        // Two detectors cannot agree: resting a finger before dragging fires a
-        // long press at the timeout, and the drag then arrives behind it, so a
-        // swipe would open a context menu on its way past.
-        PadMode.SWIPE -> Modifier.pointerInput(mode) {
-            awaitEachGesture {
-                val down = awaitFirstDown()
-                val start = down.position
-                var end = start
-                var moved = false
-                // Pointer events carry their own clock; wall time is a
-                // different base and would not compare meaningfully.
-                var releasedAt = down.uptimeMillis
-
-                while (true) {
-                    val event = awaitPointerEvent()
-                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                    end = change.position
-                    releasedAt = change.uptimeMillis
-                    if (!moved && (end - start).getDistance() > viewConfiguration.touchSlop) {
-                        moved = true
-                    }
-                    if (moved) change.consume()
-                    if (!change.pressed) break
-                }
-
-                val heldMs = releasedAt - down.uptimeMillis
-
-                // Map local pixels into the 0..1000 space the device uses.
-                val sx = (start.x / size.width * 1000).toInt().coerceIn(0, 1000)
-                val sy = (start.y / size.height * 1000).toInt().coerceIn(0, 1000)
-                val ex = (end.x / size.width * 1000).toInt().coerceIn(0, 1000)
-                val ey = (end.y / size.height * 1000).toInt().coerceIn(0, 1000)
-
-                when {
-                    moved && (abs(ex - sx) > 40 || abs(ey - sy) > 40) -> onSwipe(sx, sy, ex, ey)
-                    moved -> Unit // too small to mean anything either way
-                    heldMs >= viewConfiguration.longPressTimeoutMillis -> onSelectHold()
-                    else -> onSelect()
-                }
-            }
-        }
-    }
-
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(28.dp))
-            .background(MaterialTheme.colorScheme.surface)
-            .then(gestures),
+    BoxWithConstraints(
+        modifier = modifier,
         contentAlignment = Alignment.Center,
     ) {
-        // Direction affordances only apply when taps steer.
-        if (mode == PadMode.DPAD) {
-        Icon(
-            Icons.Default.KeyboardArrowUp, null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-            modifier = Modifier.align(Alignment.TopCenter).padding(top = 18.dp).size(30.dp),
-        )
-        Icon(
-            Icons.Default.KeyboardArrowDown, null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 18.dp).size(30.dp),
-        )
-        Icon(
-            Icons.Default.KeyboardArrowLeft, null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-            modifier = Modifier.align(Alignment.CenterStart).padding(start = 18.dp).size(30.dp),
-        )
-        Icon(
-            Icons.Default.KeyboardArrowRight, null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-            modifier = Modifier.align(Alignment.CenterEnd).padding(end = 18.dp).size(30.dp),
-        )
-        }
+        val side = minOf(maxWidth, maxHeight)
+        val chevron = (side * 0.09f).coerceAtMost(30.dp)
 
         Box(
             modifier = Modifier
-                .size(96.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)),
+                .fillMaxWidth()
+                .height(side)
+                .clip(RoundedCornerShape(28.dp))
+                .background(MaterialTheme.colorScheme.surface)
+                .pointerInput(Unit) {
+                    val centre = 500f
+                    // Frac is measured against a fixed 300 dp reference pad —
+                    // the size the sensitivity curve was tuned on — not against
+                    // this surface. The surface changes shape with the layout,
+                    // and a small one would amplify finger tremor into focus
+                    // jumps.
+                    val refPx = 300.dp.toPx()
+                    // A touch more generous than the visual circle (0.30):
+                    // taps near its edge are still selects, and the rim
+                    // chevrons sit far enough out to stay directional.
+                    val centreRadius = minOf(size.width, size.height) * 0.38f
+
+                    fun direction(pos: Offset) {
+                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        val dx = pos.x - size.width / 2f
+                        val dy = pos.y - size.height / 2f
+                        val button = if (abs(dx) > abs(dy)) {
+                            if (dx > 0) Button.RIGHT else Button.LEFT
+                        } else {
+                            if (dy > 0) Button.DOWN else Button.UP
+                        }
+                        onDirectionDown(button)
+                        onDirectionUp(button)
+                    }
+
+                    awaitEachGesture {
+                        val down = awaitFirstDown()
+                        val start = down.position
+                        // Deliberately larger than the system touch slop: a
+                        // tap whose finger drifts a few dp must not turn into
+                        // a micro-swipe — in video players even a tiny
+                        // horizontal swipe skips ±10 seconds, which read as
+                        // mysterious rewinds on centre taps.
+                        // Rim vs centre is decided on touch-down, so rim
+                        // presses respond the instant the finger lands.
+                        val centreDown = run {
+                            val dx = start.x - size.width / 2f
+                            val dy = start.y - size.height / 2f
+                            hypot(dx, dy) < centreRadius
+                        }
+
+                        // Rim presses hold the HID key down, so tvOS
+                        // repeats the direction for as long as the finger
+                        // stays; the response is instantaneous.
+                        var rimDirection: Button? = null
+                        if (!centreDown) {
+                            val dir = run {
+                                val dx = start.x - size.width / 2f
+                                val dy = start.y - size.height / 2f
+                                if (abs(dx) > abs(dy)) {
+                                    if (dx > 0) Button.RIGHT else Button.LEFT
+                                } else {
+                                    if (dy > 0) Button.DOWN else Button.UP
+                                }
+                            }
+                            onDirectionDown(dir)
+                            rimDirection = dir
+                        }
+
+                        var drag = false
+                        var tap = false
+                        var holdSelect = false
+                        var upPos = start
+
+                        var vx = centre
+                        var vy = centre
+                        var lastPos = start
+                        var lastTime = down.uptimeMillis
+
+                        fun advance(pos: Offset, time: Long) {
+                            val dt = (time - lastTime).coerceAtLeast(1L) / 1000f
+                            val fracX = (pos.x - lastPos.x) / refPx
+                            val fracY = (pos.y - lastPos.y) / refPx
+                            val speed = hypot(fracX, fracY) / dt
+                            val gain = TouchAcceleration.gain(speed)
+                            vx = (vx + fracX * 1000f * gain * HORIZONTAL_SENSITIVITY)
+                                .coerceIn(0f, 1000f)
+                            vy = (vy + fracY * 1000f * gain * VERTICAL_SENSITIVITY)
+                                .coerceIn(0f, 1000f)
+                            lastPos = pos
+                            lastTime = time
+                            onTouch(vx.toInt(), vy.toInt(), TouchPhase.HOLD)
+                        }
+
+                        // Phase 1: for centre touches, wait for up (tap), the
+                        // long-press timeout (held select), or movement (drag).
+                        if (centreDown) {
+                            val finished = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                    if (change.changedToUp()) { tap = true; upPos = change.position; break }
+                                    if ((change.position - start).getDistance() > CENTRE_COMMIT_DP.dp.toPx()) { drag = true; break }
+                                    change.consume()
+                                }
+                                true
+                            }
+                            if (finished == null) {
+                                holdSelect = true
+                                onSelectDown()
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                    if (change.changedToUp()) { upPos = change.position; break }
+                                    change.consume()
+                                }
+                            }
+                        } else {
+                            // Rim: the direction is already held down; a
+                            // movement past the slop hands the gesture over to
+                            // a swipe.
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                if (change.changedToUp()) { tap = true; upPos = change.position; break }
+                                if ((change.position - start).getDistance() > RIM_COMMIT_DP.dp.toPx()) { drag = true; break }
+                                change.consume()
+                            }
+                        }
+
+                        if (drag) {
+                            if (rimDirection != null) onDirectionUp(rimDirection)
+                            onTouch(500, 500, TouchPhase.PRESS)
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                advance(change.position, change.uptimeMillis)
+                                if (change.changedToUp()) break
+                                change.consume()
+                            }
+                            onTouch(vx.toInt(), vy.toInt(), TouchPhase.RELEASE)
+                        } else {
+                            when {
+                                holdSelect -> onSelectUp()
+                                centreDown && tap -> {
+                                    // Classify by the midpoint of the gesture:
+                                    // a tap that drifts a little is still a
+                                    // select unless it clearly left the centre.
+                                    val mid = Offset(
+                                        (start.x + upPos.x) / 2f,
+                                        (start.y + upPos.y) / 2f,
+                                    )
+                                    val dx = mid.x - size.width / 2f
+                                    val dy = mid.y - size.height / 2f
+                                    if (hypot(dx, dy) < centreRadius) onSelect()
+                                    else direction(mid)
+                                }
+                                else -> onDirectionUp(rimDirection ?: return@awaitEachGesture)
+                            }
+                        }
+                    }
+                },
             contentAlignment = Alignment.Center,
         ) {
-            Text(
-                "OK",
-                fontSize = 15.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            // Visual affordances only: the centre circle and the rim chevrons.
+            Box(
+                modifier = Modifier
+                    .size(side * 0.6f)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)),
             )
-        }
-
-        if (mode == PadMode.SWIPE) {
-            Text(
-                "Swipe to scroll · tap to select",
-                fontSize = 12.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 20.dp),
+            Icon(
+                Icons.Default.KeyboardArrowUp,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = side * 0.02f).size(chevron),
+            )
+            Icon(
+                Icons.Default.KeyboardArrowDown,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = side * 0.02f).size(chevron),
+            )
+            Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                modifier = Modifier.align(Alignment.CenterStart).padding(start = side * 0.02f).size(chevron),
+            )
+            Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                modifier = Modifier.align(Alignment.CenterEnd).padding(end = side * 0.02f).size(chevron),
             )
         }
     }
 }
 
-/** Segmented control choosing how the touch surface interprets gestures. */
-@Composable
-private fun PadModeToggle(current: PadMode, onSelect: (PadMode) -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(MaterialTheme.colorScheme.surface)
-            .padding(4.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        PadModeOption(
-            label = "D-pad",
-            icon = Icons.Default.Gamepad,
-            selected = current == PadMode.DPAD,
-            modifier = Modifier.weight(1f),
-        ) { onSelect(PadMode.DPAD) }
-
-        PadModeOption(
-            label = "Swipe",
-            icon = Icons.Default.TouchApp,
-            selected = current == PadMode.SWIPE,
-            modifier = Modifier.weight(1f),
-        ) { onSelect(PadMode.SWIPE) }
+/**
+ * Fire [onStep] once on touch-down, then keep repeating while the finger stays
+ * down — first repeat after [firstDelayMs], then every [stepDelayMs]. How the
+ * volume keys step without being tapped over and over.
+ */
+private fun Modifier.repeatOnHold(
+    firstDelayMs: Long = 400,
+    stepDelayMs: Long = 150,
+    onStep: () -> Unit,
+): Modifier = pointerInput(Unit) {
+    awaitEachGesture {
+        val down = awaitFirstDown(requireUnconsumed = false)
+        down.consume()
+        onStep()
+        var steps = 1
+        while (true) {
+            val event = awaitPointerEvent()
+            val change = event.changes.firstOrNull() ?: break
+            val heldFor = (change.uptimeMillis - down.uptimeMillis - firstDelayMs)
+                .coerceAtLeast(0L)
+            val target = 1 + (heldFor / stepDelayMs).toInt()
+            while (steps < target) {
+                onStep()
+                steps++
+            }
+            if (!change.pressed) break
+            change.consume()
+        }
     }
 }
 
+// Both axes 1:1 against the 300 dp reference pad, so the same finger travel
+// moves the focus the same distance whichever way you swipe.
+private const val HORIZONTAL_SENSITIVITY = 1.0f
+private const val VERTICAL_SENSITIVITY = 1.0f
+
+/**
+ * How far the finger must travel before a gesture commits as a swipe. Below
+ * it everything is a tap — the gate that keeps tap drift from becoming a
+ * micro-swipe (which video players read as a +-10 second skip).
+ */
+private const val RIM_COMMIT_DP = 40
+
+/**
+ * Centre taps get a larger allowance: the pad shrinks while the now-playing
+ * card is up, and a tap near the small circle's edge must still be a select —
+ * a rim misread there plays as a 10 second skip in the player.
+ */
+private const val CENTRE_COMMIT_DP = 60
+
+/**
+ * One rim arrow: a tap target sitting in the ring between the pad edge and the
+ * touch surface, sized as a fraction of the pad so it stays inside the ring.
+ */
 @Composable
-private fun PadModeOption(
-    label: String,
+private fun RimDirection(
+    button: Button,
     icon: ImageVector,
-    selected: Boolean,
     modifier: Modifier = Modifier,
-    onClick: () -> Unit,
+    iconSize: Dp,
+    description: String,
+    onDirection: (Button) -> Unit,
 ) {
-    Row(
+    val haptics = LocalHapticFeedback.current
+    Box(
         modifier = modifier
-            .clip(RoundedCornerShape(9.dp))
-            .background(
-                if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
-                else Color.Transparent
-            )
-            .clickable(onClick = onClick)
-            .padding(vertical = 9.dp),
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.CenterVertically,
+            .clip(CircleShape)
+            .clickable {
+                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                onDirection(button)
+            },
+        contentAlignment = Alignment.Center,
     ) {
         Icon(
             icon,
-            contentDescription = null,
-            tint = if (selected) MaterialTheme.colorScheme.primary
-            else MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(16.dp),
-        )
-        Spacer(Modifier.width(6.dp))
-        Text(
-            label,
-            fontSize = 13.sp,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-            color = if (selected) MaterialTheme.colorScheme.primary
-            else MaterialTheme.colorScheme.onSurfaceVariant,
+            contentDescription = description,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+            modifier = Modifier.size(iconSize),
         )
     }
 }
@@ -512,14 +681,14 @@ private fun RoundButton(icon: ImageVector, description: String, onClick: () -> U
         modifier = Modifier
             .size(64.dp)
             .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.surface)
+            .background(MaterialTheme.colorScheme.primaryContainer)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
             icon,
             contentDescription = description,
-            tint = MaterialTheme.colorScheme.onSurface,
+            tint = MaterialTheme.colorScheme.onPrimaryContainer,
             modifier = Modifier.size(26.dp),
         )
     }
@@ -548,7 +717,7 @@ private fun TextEntry(state: UiState, vm: RemoteViewModel) {
                     .weight(1f)
                     .focusRequester(focusRequester),
                 singleLine = true,
-                placeholder = { Text("Type on the Apple TV") },
+                placeholder = { Text(stringResource(R.string.type_on_tv)) },
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                 keyboardActions = KeyboardActions(onSend = {
                     vm.sendText(draft)
@@ -569,7 +738,7 @@ private fun TextEntry(state: UiState, vm: RemoteViewModel) {
             ) {
                 Icon(
                     Icons.Default.Send,
-                    contentDescription = "Send text",
+                    contentDescription = stringResource(R.string.send_text),
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(20.dp),
                 )
@@ -585,7 +754,7 @@ private fun TextEntry(state: UiState, vm: RemoteViewModel) {
             ) {
                 Icon(
                     Icons.Default.Backspace,
-                    contentDescription = "Clear field",
+                    contentDescription = stringResource(R.string.clear_field),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(20.dp),
                 )
@@ -594,10 +763,10 @@ private fun TextEntry(state: UiState, vm: RemoteViewModel) {
 
         Spacer(Modifier.height(6.dp))
         val status = when {
-            state.checkingField -> "Checking for a focused field…"
-            state.fieldText == null -> "No text field focused on the Apple TV."
-            state.fieldText.isEmpty() -> "Field is empty."
-            else -> "Field: \"${state.fieldText}\""
+            state.checkingField -> stringResource(R.string.checking_field)
+            state.fieldText == null -> stringResource(R.string.no_field)
+            state.fieldText.isEmpty() -> stringResource(R.string.field_empty)
+            else -> stringResource(R.string.field_is, state.fieldText)
         }
         Text(
             status,
@@ -636,6 +805,9 @@ private fun NowPlayingCard(state: UiState, playing: NowPlaying, vm: RemoteViewMo
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            // Fixed height: the card must occupy the same space whether it is
+            // empty or full — the pad's touch geometry depends on it.
+            .height(188.dp)
             .clip(RoundedCornerShape(16.dp))
             .background(MaterialTheme.colorScheme.surface)
             .padding(14.dp),
@@ -674,9 +846,9 @@ private fun NowPlayingCard(state: UiState, playing: NowPlaying, vm: RemoteViewMo
                 // obvious from the transport glyph, so only the states that
                 // are not are worth spelling out.
                 val stateLabel = when (playing.playbackState) {
-                    PlaybackState.SEEKING -> "Seeking"
-                    PlaybackState.STOPPED -> "Stopped"
-                    PlaybackState.INTERRUPTED -> "Interrupted"
+                    PlaybackState.SEEKING -> stringResource(R.string.state_seeking)
+                    PlaybackState.STOPPED -> stringResource(R.string.state_stopped)
+                    PlaybackState.INTERRUPTED -> stringResource(R.string.state_interrupted)
                     else -> null
                 }
                 val caption = listOfNotNull(playing.appName, stateLabel).joinToString(" · ")
@@ -690,11 +862,11 @@ private fun NowPlayingCard(state: UiState, playing: NowPlaying, vm: RemoteViewMo
                     )
                 }
                 Text(
-                    playing.title ?: "Nothing playing",
+                    playing.title ?: stringResource(R.string.nothing_playing),
                     fontSize = 16.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 2,
+                    maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
                 playing.artist?.takeIf { it.isNotBlank() }?.let {
@@ -717,49 +889,24 @@ private fun NowPlayingCard(state: UiState, playing: NowPlaying, vm: RemoteViewMo
         }
 
         // Transport stays available while paused: skipping about is as useful
-        // then as it is during playback.
+        // then as it is during playback. The play/pause button itself lives in
+        // the bottom transport row, so it is not repeated here.
         val seekable = playing.playbackState in setOf(
             PlaybackState.PLAYING, PlaybackState.PAUSED, PlaybackState.SEEKING,
         )
         if (seekable) {
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(6.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                TransportButton(Icons.Default.Replay10, "Back 10 seconds", 30.dp) {
+                TransportButton(Icons.Default.Replay10, stringResource(R.string.skip_back), 30.dp) {
                     vm.skip(-SKIP_SECONDS)
                 }
-                val isPlaying = playing.playbackState == PlaybackState.PLAYING
-                TransportButton(
-                    icon = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    description = if (isPlaying) "Pause" else "Play",
-                    size = 40.dp,
-                ) { vm.press(Button.PLAY_PAUSE) }
-                TransportButton(Icons.Default.Forward10, "Forward 10 seconds", 30.dp) {
+                TransportButton(Icons.Default.Forward10, stringResource(R.string.skip_forward), 30.dp) {
                     vm.skip(SKIP_SECONDS)
                 }
-            }
-        }
-
-        if (state.capabilities?.volume == true) {
-            Spacer(Modifier.height(12.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                PillButton(
-                    icon = Icons.Default.VolumeDown,
-                    label = "Volume down",
-                    modifier = Modifier.weight(1f),
-                ) { vm.volumeDown() }
-
-                PillButton(
-                    icon = Icons.Default.VolumeUp,
-                    label = "Volume up",
-                    modifier = Modifier.weight(1f),
-                ) { vm.volumeUp() }
             }
         }
     }
@@ -877,8 +1024,12 @@ private fun PillButton(
     Row(
         modifier = modifier
             .clip(RoundedCornerShape(10.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-            .clickable(onClick = onClick)
+            .background(MaterialTheme.colorScheme.primaryContainer)
+            .repeatOnHold(onStep = onClick)
+            .semantics {
+                role = Role.Button
+                onClick { onClick(); true }
+            }
             .padding(vertical = 9.dp),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
@@ -886,8 +1037,8 @@ private fun PillButton(
         Icon(
             icon,
             contentDescription = label,
-            tint = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.size(18.dp),
+            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+            modifier = Modifier.size(24.dp),
         )
     }
 }
@@ -916,19 +1067,19 @@ private fun EnableNowPlaying(
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             Text(
-                "Show what's playing",
+                stringResource(R.string.show_playing),
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Medium,
                 color = MaterialTheme.colorScheme.onSurface,
             )
             Text(
-                "Needs a second pairing code from the TV",
+                stringResource(R.string.needs_second_pairing),
                 fontSize = 11.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         Text(
-            if (state.busy) "…" else "Set up",
+            if (state.busy) "…" else stringResource(R.string.set_up),
             fontSize = 12.sp,
             color = MaterialTheme.colorScheme.primary,
         )
@@ -936,11 +1087,11 @@ private fun EnableNowPlaying(
 }
 
 @Composable
-private fun AppGrid(state: UiState, vm: RemoteViewModel, modifier: Modifier = Modifier) {
+private fun AppGrid(state: UiState, vm: RemoteViewModel, modifier: Modifier = Modifier, columns: Int = 3) {
     if (state.apps.isEmpty()) {
         Box(modifier = modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
             Text(
-                "Loading apps…",
+                stringResource(R.string.loading_apps),
                 fontSize = 13.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -949,7 +1100,7 @@ private fun AppGrid(state: UiState, vm: RemoteViewModel, modifier: Modifier = Mo
     }
 
     LazyVerticalGrid(
-        columns = GridCells.Fixed(3),
+        columns = GridCells.Fixed(columns),
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),

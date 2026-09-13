@@ -1,5 +1,7 @@
 package dev.atvremote.app
 
+import dev.atvremote.app.R
+
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -39,18 +41,18 @@ object KeyboardNotification {
 
         val action = Notification.Action.Builder(
             Icon.createWithResource(context, R.drawable.ic_keyboard),
-            "Type",
+            context.getString(R.string.notif_type),
             reply,
         )
-            .addRemoteInput(RemoteInput.Builder(RESULT_KEY).setLabel("Type here").build())
+            .addRemoteInput(RemoteInput.Builder(RESULT_KEY).setLabel(context.getString(R.string.notif_type_here)).build())
             .setAllowGeneratedReplies(false)
             .build()
 
         val notification = Notification.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_keyboard)
-            .setContentTitle("Type on $deviceName")
+            .setContentTitle(context.getString(R.string.notif_type_title, deviceName))
             .setContentText(
-                existing?.takeIf { it.isNotEmpty() } ?: "The Apple TV is asking for text"
+                existing?.takeIf { it.isNotEmpty() } ?: context.getString(R.string.notif_type_body)
             )
             .setContentIntent(openApp(context))
             .setVisibility(Notification.VISIBILITY_PUBLIC)
@@ -83,12 +85,12 @@ object KeyboardNotification {
     private fun createChannel(context: Context) {
         val channel = NotificationChannel(
             CHANNEL_ID,
-            "Keyboard",
+            context.getString(R.string.notif_channel_keyboard),
             // High, so it arrives as a banner the way the iPhone prompt does —
             // it is only useful in the moment the TV is waiting for it.
             NotificationManager.IMPORTANCE_HIGH,
         ).apply {
-            description = "Offers the keyboard when the Apple TV asks for text"
+            description = context.getString(R.string.notif_channel_keyboard_desc)
             setSound(null, null)
             enableVibration(false)
             setShowBadge(false)

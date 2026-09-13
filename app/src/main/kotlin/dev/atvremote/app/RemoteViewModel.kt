@@ -11,6 +11,7 @@ import dev.atvremote.protocol.companion.AppleTvRemote
 import dev.atvremote.protocol.companion.Button
 import dev.atvremote.protocol.companion.CompanionClient
 import dev.atvremote.protocol.companion.MediaCapabilities
+import dev.atvremote.protocol.companion.TouchPhase
 import dev.atvremote.protocol.airplay.Ap2Session
 import dev.atvremote.protocol.airplay.AirPlayAuth
 import dev.atvremote.protocol.airplay.AirPlayConnection
@@ -20,6 +21,8 @@ import dev.atvremote.protocol.discovery.AppleTvDevice
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -69,6 +72,10 @@ data class UiState(
     val airplayPaired: Boolean = false,
     val nowPlayingError: String? = null,
     val reconnecting: Boolean = false,
+    /** True while the one-shot startup auto-connect is in flight. */
+    val autoConnecting: Boolean = false,
+    /** The device to offer a wake-and-retry for after a failed connect. */
+    val wakeTarget: AppleTvDevice? = null,
     val padMode: PadMode = PadMode.DPAD,
     val error: String? = null,
     val pairedKeys: Set<String> = emptySet(),
@@ -128,11 +135,19 @@ class RemoteViewModel(app: Application) : AndroidViewModel(app) {
     private var pairingClient: CompanionClient? = null
     private var pairingSession: CompanionClient.PairingSession? = null
 
+    // Touch samples for the pad. Declared ahead of init: the drain coroutine
+    // starts there, and a property read before its declaration line would be
+    // null — the intermittent startup crash.
+    private val touchInput = Channel<TouchSample>(Channel.UNLIMITED)
+
     private val _state = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = _state.asStateFlow()
 
     /** Whether the media notification's service has been asked to run. */
     private var notificationRunning = false
+
+    /** Guards the one-shot startup auto-connect. */
+    private var autoConnectAttempted = false
 
     /** Last prompt posted, so an unchanged one is not reposted on every update. */
     private var keyboardPrompt: Pair<String, String?>? = null
@@ -146,6 +161,8 @@ class RemoteViewModel(app: Application) : AndroidViewModel(app) {
                 syncKeyboardNotification(it)
             }
         }
+        drainTouchInput()
+        autoConnectIfSingle()
         scan()
     }
 
@@ -245,18 +262,71 @@ class RemoteViewModel(app: Application) : AndroidViewModel(app) {
 
     fun dismissError() = _state.update { it.copy(error = null) }
 
+    /**
+     * Straight into the remote when exactly one pairing exists — the common
+     * single-TV case; the back arrow on the remote returns to the list. With
+     * two or more pairings the choice stays with the user. Runs once per app
+     * start: re-running it after a failed connect would loop.
+     */
+    private fun autoConnectIfSingle() {
+        if (autoConnectAttempted) return
+        autoConnectAttempted = true
+        val last = store.loadLastDevice() ?: return
+        val keys = store.pairedKeys()
+        if (keys.size == 1 && last.credentialKey in keys) {
+            // Hold the list back while the automatic connect runs, so the
+            // user never sees the device screen flash past on the way to the
+            // remote.
+            _state.update { it.copy(autoConnecting = true) }
+            connect(last)
+        }
+    }
+
     fun scan() {
         _state.update { it.copy(scanning = true, error = null) }
-        viewModelScope.launch {
-            val found = runCatching { discovery.scan(5000) }.getOrDefault(emptyList())
+
+        // The last device connected to appears immediately, ahead of any
+        // discovery answer — stored credentials make it tappable right away.
+        store.loadLastDevice()?.let { last ->
             _state.update { s ->
+                if (s.devices.any { it.credentialKey == last.credentialKey }) s
+                else s.copy(
+                    devices = s.devices + last,
+                    pairedKeys = s.pairedKeys + last.credentialKey,
+                )
+            }
+        }
+
+        viewModelScope.launch {
+            val found = runCatching { discovery.scan(5000, ::onDeviceResolved) }
+                .getOrDefault(emptyList())
+            _state.update { s ->
+                // A paired device that is asleep will not answer discovery;
+                // keep it listed rather than dropping it off the screen.
+                val last = store.loadLastDevice()
+                val merged = if (last != null && found.none { it.credentialKey == last.credentialKey }) {
+                    found + last
+                } else found
                 s.copy(
                     scanning = false,
-                    devices = found,
-                    pairedKeys = found.filter { store.isPaired(it.credentialKey) }
+                    devices = merged,
+                    pairedKeys = merged.filter { store.isPaired(it.credentialKey) }
                         .map { it.credentialKey }.toSet(),
                 )
             }
+        }
+    }
+
+    /** Merge a freshly resolved device into the list without duplicates. */
+    private fun onDeviceResolved(device: AppleTvDevice) {
+        _state.update { s ->
+            if (s.devices.any { it.credentialKey == device.credentialKey }) s
+            else s.copy(
+                devices = s.devices + device,
+                pairedKeys = if (store.isPaired(device.credentialKey)) {
+                    s.pairedKeys + device.credentialKey
+                } else s.pairedKeys,
+            )
         }
     }
 
@@ -277,7 +347,7 @@ class RemoteViewModel(app: Application) : AndroidViewModel(app) {
                 _state.update { it.copy(busy = false, screen = Screen.PinEntry(device)) }
             } catch (e: Exception) {
                 closePairing()
-                _state.update { it.copy(busy = false, error = "Could not start pairing: ${e.message}") }
+                _state.update { it.copy(busy = false, error = str(R.string.err_pairing_start, e.message ?: "")) }
             }
         }
     }
@@ -298,7 +368,7 @@ class RemoteViewModel(app: Application) : AndroidViewModel(app) {
             } catch (e: Exception) {
                 closePairing()
                 _state.update {
-                    it.copy(busy = false, screen = Screen.DeviceList, error = e.message ?: "Pairing failed")
+                    it.copy(busy = false, screen = Screen.DeviceList, error = e.message ?: str(R.string.err_pairing_failed))
                 }
             }
         }
@@ -321,8 +391,10 @@ class RemoteViewModel(app: Application) : AndroidViewModel(app) {
                 _state.update {
                     it.copy(
                         busy = false,
+                        autoConnecting = false,
+                        wakeTarget = null,
                         screen = Screen.Remote(device),
-                        error = e.message ?: "AirPlay pairing failed",
+                        error = e.message ?: str(R.string.err_airplay_pairing_failed),
                     )
                 }
             }
@@ -432,6 +504,9 @@ class RemoteViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    private fun str(id: Int, vararg args: Any?): String =
+        getApplication<Application>().getString(id, *args)
+
     private fun isConnectionLost(e: Throwable): Boolean {
         val message = (e.message ?: "").lowercase()
         return e is java.io.IOException ||
@@ -443,8 +518,8 @@ class RemoteViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun friendlyError(e: Throwable): String =
-        if (isConnectionLost(e)) "Lost connection to the Apple TV. Check it is awake and on the same network."
-        else e.message ?: "Something went wrong"
+        if (isConnectionLost(e)) str(R.string.err_lost_connection)
+        else e.message ?: str(R.string.err_generic)
 
     private fun connect(device: AppleTvDevice) {
         val credentials = store.load(device.credentialKey) ?: run {
@@ -456,17 +531,26 @@ class RemoteViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 val r = establish(device, credentials)
                 remote = r
+                // Capabilities arrive during the handshake and the device will
+                // not re-push them, so they survive reconnects to the same
+                // TV — but they must not leak across to a different device:
+                // stale volume routing would capture the phone's volume keys
+                // for a TV that cannot route them.
+                val sameDevice = currentDevice?.credentialKey == device.credentialKey
                 _state.update {
                     it.copy(
                         busy = false,
+                        autoConnecting = false,
+                        wakeTarget = null,
+                        capabilities = if (sameDevice) it.capabilities else null,
                         screen = Screen.Remote(device),
                         apps = emptyList(),
-                        capabilities = null,
                         volume = null,
                         airplayPaired = store.isAirPlayPaired(device.credentialKey),
                     ).withNowPlaying(null)
                 }
                 currentDevice = device
+                store.saveLastDevice(device)
                 // Now-playing must come up on every connect. Previously this
                 // only ran straight after AirPlay pairing, so it silently
                 // stopped working on the next app start.
@@ -481,9 +565,13 @@ class RemoteViewModel(app: Application) : AndroidViewModel(app) {
                 _state.update {
                     it.copy(
                         busy = false,
+                        autoConnecting = false,
+                        // A sleeping Apple TV is the usual reason for a plain
+                        // timeout; offer the wake-and-retry path.
+                        wakeTarget = if (stale) null else device,
                         screen = Screen.DeviceList,
-                        error = if (stale) "Pairing was removed on the Apple TV - pair again."
-                        else "Could not connect: ${e.message}",
+                        error = if (stale) str(R.string.err_stale_pairing)
+                        else str(R.string.err_connect, e.message ?: ""),
                     )
                 }
                 scan()
@@ -532,7 +620,7 @@ class RemoteViewModel(app: Application) : AndroidViewModel(app) {
             } catch (e: Exception) {
                 closeAirPlayPairing()
                 _state.update {
-                    it.copy(busy = false, error = "Could not start AirPlay pairing: ${e.message}")
+                    it.copy(busy = false, error = str(R.string.err_airplay_pairing_start, e.message ?: ""))
                 }
             }
         }
@@ -610,6 +698,84 @@ class RemoteViewModel(app: Application) : AndroidViewModel(app) {
     fun wake() = command { wake() }
     fun swipe(sx: Int, sy: Int, ex: Int, ey: Int, ms: Long) = command { swipe(sx, sy, ex, ey, ms) }
 
+    // -------------------------------------------------- touch-surface stream
+
+    private data class TouchSample(val x: Int, val y: Int, val phase: TouchPhase)
+
+    fun touch(x: Int, y: Int, phase: TouchPhase) {
+        touchInput.trySend(TouchSample(x, y, phase))
+    }
+
+    /**
+     * A swipe is a stream of touch samples that must reach the device in order —
+     * Press, then Holds, then Release — so they go through a channel drained by
+     * a single consumer rather than one coroutine per sample. Hold samples are
+     * lightly throttled to ~12 ms since the coordinates are absolute and the
+     * wire does not need more.
+     */
+    private fun drainTouchInput() {
+        netScope.launch {
+            var lastHoldNanos = 0L
+            for (sample in touchInput) {
+                if (sample.phase == TouchPhase.HOLD) {
+                    val now = System.nanoTime()
+                    if (now - lastHoldNanos < 12_000_000L) continue
+                    lastHoldNanos = now
+                }
+                val r = remote ?: continue
+                runCatching { r.touch(sample.x, sample.y, sample.phase) }
+            }
+        }
+    }
+
+    /** Held select: down on the long-press timeout, up when the finger lifts. */
+    fun selectDown() = command { buttonDown(Button.SELECT) }
+    fun selectUp() = command { buttonUp(Button.SELECT) }
+
+    /** Rim direction held down/up; tvOS repeats a held direction itself. */
+    fun padDirectionDown(button: Button) = command { buttonDown(button) }
+    fun padDirectionUp(button: Button) = command { buttonUp(button) }
+
+    /**
+     * Nudge a sleeping Apple TV. A bare Companion session — connect,
+     * authenticate, one WAKE press — is all a sleeping device will answer,
+     * so this skips the full remote handshake, then retries the real connect
+     * once the TV has had a moment to come up.
+     */
+    fun wakeDevice(device: AppleTvDevice) {
+        val credentials = store.load(device.credentialKey) ?: return
+        _state.update { it.copy(busy = true, error = null, wakeTarget = null) }
+        netScope.launch {
+            val woke = runCatching {
+                val client = CompanionClient(device.address, device.port, netScope)
+                try {
+                    client.connect()
+                    client.authenticate(credentials)
+                    client.hidButton(Button.WAKE.code, down = false)
+                } finally {
+                    client.close()
+                }
+            }.isSuccess
+            if (woke) {
+                delay(2500)
+                connect(device)
+            } else {
+                _state.update { it.copy(busy = false, error = str(R.string.wake_failed)) }
+            }
+        }
+    }
+
+    /**
+     * Whether the phone's hardware volume keys should drive the TV's volume:
+     * while the remote itself is on screen and the Apple TV reports it can
+     * route volume. Everywhere else the keys stay with the phone.
+     */
+    fun handlesVolumeKeys(): Boolean =
+        state.value.screen is Screen.Remote && state.value.capabilities?.volume == true
+
+    /** A hardware volume-key press (repeats arrive as more presses). */
+    fun onVolumeKey(up: Boolean) = if (up) volumeUp() else volumeDown()
+
     fun volumeUp() = command {
         press(Button.VOLUME_UP)
         refreshVolume()
@@ -664,7 +830,7 @@ class RemoteViewModel(app: Application) : AndroidViewModel(app) {
                 _state.update {
                     if (result == null) it.copy(
                         fieldText = null,
-                        error = "No text field is focused on the Apple TV.",
+                        error = str(R.string.err_no_field),
                     ) else it.copy(fieldText = result)
                 }
             } catch (e: Exception) {

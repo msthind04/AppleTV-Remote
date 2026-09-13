@@ -68,6 +68,20 @@ class CompanionClient(
      */
     fun sendNoOp() = connection.send(FrameType.NO_OP, ByteArray(0))
 
+    // ------------------------------------------------------------ hid
+
+    /**
+     * One HID button press or release on the virtual remote. Public so callers
+     * with a bare (pre-session) client — the wake path — can send button
+     * events without hand-rolling the wire format in the app module.
+     */
+    suspend fun hidButton(code: Int, down: Boolean) {
+        request(
+            "_hidC",
+            mapOf("_hBtS" to if (down) 1 else 2, "_hidC" to code),
+        )
+    }
+
     // ------------------------------------------------------------ framing
 
     private fun handleFrame(frame: Frame) {

@@ -263,6 +263,13 @@ class AppleTvRemote(
     /** Hold Home to reach the app switcher / control centre. */
     suspend fun holdHome() = press(Button.HOME, holdMs = 1000)
 
+    /**
+     * Hold a button down until the matching [up] — how a held select opens a
+     * context menu, held for exactly as long as the finger stays down.
+     */
+    suspend fun buttonDown(button: Button) = hid(button, down = true)
+    suspend fun buttonUp(button: Button) = hid(button, down = false)
+
     // ------------------------------------------------------- media control
 
     suspend fun mediaControl(command: MediaControl, args: Map<String, Any?> = emptyMap()) =

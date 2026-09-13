@@ -55,7 +55,7 @@ fun DeviceListScreen(state: UiState, vm: RemoteViewModel) {
         )
         Spacer(Modifier.height(4.dp))
         Text(
-            "Devices on your network",
+            stringResource(R.string.devices_subtitle),
             fontSize = 14.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -65,6 +65,27 @@ fun DeviceListScreen(state: UiState, vm: RemoteViewModel) {
         state.error?.let { message ->
             ErrorBanner(message) { vm.dismissError() }
             Spacer(Modifier.height(12.dp))
+        }
+
+        state.wakeTarget?.let { target ->
+            Button(
+                onClick = { vm.wakeDevice(target) },
+                enabled = !state.busy,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp),
+                shape = RoundedCornerShape(14.dp),
+            ) {
+                Text(stringResource(R.string.wake_and_retry, target.name))
+            }
+            Spacer(Modifier.height(12.dp))
+        }
+
+        if (state.autoConnecting) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
+            return
         }
 
         if (state.devices.isEmpty() && !state.scanning) {
@@ -103,11 +124,11 @@ fun DeviceListScreen(state: UiState, vm: RemoteViewModel) {
                     color = MaterialTheme.colorScheme.onPrimary,
                 )
                 Spacer(Modifier.width(10.dp))
-                Text(if (state.busy) "Connecting…" else "Scanning…")
+                Text(stringResource(if (state.busy) R.string.connecting else R.string.scanning))
             } else {
                 Icon(Icons.Default.Refresh, contentDescription = null, Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
-                Text("Scan again")
+                Text(stringResource(R.string.scan_again))
             }
         }
 
@@ -185,14 +206,14 @@ private fun EmptyState() {
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
-            "No Apple TVs found",
+            stringResource(R.string.no_devices),
             fontSize = 16.sp,
             fontWeight = FontWeight.Medium,
             color = MaterialTheme.colorScheme.onSurface,
         )
         Spacer(Modifier.height(6.dp))
         Text(
-            "Make sure your phone is on the same Wi-Fi network as the Apple TV.",
+            stringResource(R.string.no_devices_hint),
             fontSize = 13.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -216,6 +237,6 @@ fun ErrorBanner(message: String, onDismiss: () -> Unit) {
             fontSize = 13.sp,
             color = MaterialTheme.colorScheme.error,
         )
-        Text("Dismiss", fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
+        Text(stringResource(R.string.dismiss), fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
     }
 }

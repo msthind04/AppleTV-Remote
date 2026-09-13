@@ -39,6 +39,8 @@ class NowPlayingService : Service() {
 
     /** Decoded artwork, kept until the bytes change, since decoding is not cheap. */
     private var artwork: Bitmap? = null
+
+    private val nothingPlaying: String get() = getString(R.string.nothing_playing)
     private var artworkBytes = -1
 
     private var volumeProvider: VolumeProvider? = null
@@ -113,7 +115,7 @@ class NowPlayingService : Service() {
         }
 
         val metadata = MediaMetadata.Builder()
-            .putString(MediaMetadata.METADATA_KEY_TITLE, snapshot.title ?: NOTHING_PLAYING)
+            .putString(MediaMetadata.METADATA_KEY_TITLE, snapshot.title ?: nothingPlaying)
             .putString(MediaMetadata.METADATA_KEY_ARTIST, snapshot.artist ?: snapshot.deviceName)
             .putString(MediaMetadata.METADATA_KEY_ALBUM, snapshot.album)
             .putBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART, artwork)
@@ -191,7 +193,7 @@ class NowPlayingService : Service() {
         val playing = snapshot?.playing == true
         val builder = Notification.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle(snapshot?.title ?: NOTHING_PLAYING)
+            .setContentTitle(snapshot?.title ?: nothingPlaying)
             .setContentText(snapshot?.artist ?: snapshot?.deviceName ?: "")
             .setContentIntent(openApp())
             .setVisibility(Notification.VISIBILITY_PUBLIC)
@@ -203,15 +205,15 @@ class NowPlayingService : Service() {
                     .setMediaSession(session.sessionToken)
                     .setShowActionsInCompactView(0, 1, 2)
             )
-            .addAction(action(R.drawable.ic_media_rewind, "Back 10 seconds", ACTION_REWIND))
+            .addAction(action(R.drawable.ic_media_rewind, getString(R.string.skip_back), ACTION_REWIND))
             .addAction(
                 action(
                     if (playing) R.drawable.ic_media_pause else R.drawable.ic_media_play,
-                    if (playing) "Pause" else "Play",
+                    if (playing) getString(R.string.pause) else getString(R.string.play),
                     ACTION_PLAY_PAUSE,
                 )
             )
-            .addAction(action(R.drawable.ic_media_forward, "Forward 10 seconds", ACTION_FORWARD))
+            .addAction(action(R.drawable.ic_media_forward, getString(R.string.skip_forward), ACTION_FORWARD))
 
         snapshot?.deviceName?.let { builder.setSubText(it) }
         artwork?.let { builder.setLargeIcon(it) }
@@ -246,19 +248,18 @@ class NowPlayingService : Service() {
     private fun createChannel() {
         val channel = NotificationChannel(
             CHANNEL_ID,
-            "Now playing",
+            getString(R.string.notif_channel_nowplaying),
             // Media controls are glanceable, not interruptive.
             NotificationManager.IMPORTANCE_LOW,
         ).apply {
-            description = "Controls for what the Apple TV is playing"
+            description = getString(R.string.notif_channel_nowplaying_desc)
             setShowBadge(false)
         }
         notificationManager().createNotificationChannel(channel)
     }
 
     companion object {
-        private const val NOTHING_PLAYING = "Nothing playing"
-        private const val CHANNEL_ID = "now_playing"
+        private const val CHANNEL_ID = "now_playing_v2"
         private const val NOTIFICATION_ID = 1
         private const val SKIP = 10.0
         private const val VOLUME_STEPS = 20

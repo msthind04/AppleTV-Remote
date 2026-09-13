@@ -1,6 +1,7 @@
 package dev.atvremote.app
 
 import android.content.Context
+import dev.atvremote.protocol.discovery.AppleTvDevice
 import dev.atvremote.protocol.hap.Credentials
 
 /**
@@ -15,6 +16,7 @@ import dev.atvremote.protocol.hap.Credentials
  * Backups are additionally disabled in the manifest, since Keystore-wrapped
  * ciphertext cannot be decrypted after a restore onto different hardware.
  */
+
 class CredentialStore(context: Context) {
 
     private val prefs = context.applicationContext
@@ -38,11 +40,43 @@ class CredentialStore(context: Context) {
         return legacy
     }
 
+    // The last device connected to, so the list shows something the instant
+    // the app opens instead of waiting on discovery.
+    fun saveLastDevice(device: AppleTvDevice) {
+        prefs.edit()
+            .putString("last-name", device.name)
+            .putString("last-address", device.address)
+            .putInt("last-port", device.port)
+            .putString("last-model", device.model)
+            .putString("last-identifier", device.identifier)
+            .apply()
+    }
+
+    fun loadLastDevice(): AppleTvDevice? {
+        val name = prefs.getString("last-name", null) ?: return null
+        val address = prefs.getString("last-address", null) ?: return null
+        return AppleTvDevice(
+            name = name,
+            address = address,
+            port = prefs.getInt("last-port", 0),
+            model = prefs.getString("last-model", null),
+            identifier = prefs.getString("last-identifier", null),
+        )
+    }
+
     fun forget(key: String) {
         prefs.edit().remove(key).apply()
     }
 
     fun isPaired(key: String): Boolean = prefs.contains(key)
+
+    /**
+     * Every device that has a companion pairing, excluding the AirPlay
+     * second-pairing entries and the last-device note.
+     */
+    fun pairedKeys(): Set<String> = prefs.all.keys
+        .filter { !it.endsWith("-airplay") && !it.startsWith("last-") }
+        .toSet()
 
     // Now-playing needs a second, independent AirPlay pairing with its own PIN.
     fun airplayKey(key: String): String = "$key-airplay"

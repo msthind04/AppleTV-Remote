@@ -6,4 +6,92 @@
     -->
     <string name="app_name">Remote for Apple TV</string>
     <string name="disclaimer">Not affiliated with Apple Inc. Apple TV and AirPlay are trademarks of Apple Inc.</string>
+
+    <!-- Device list -->
+    <string name="devices_subtitle">Devices on your network</string>
+    <string name="device_paired">Paired</string>
+    <string name="device_pair">Pair</string>
+    <string name="scan_again">Scan again</string>
+    <string name="connecting">Connecting…</string>
+    <string name="scanning">Scanning…</string>
+    <string name="no_devices">No Apple TVs found</string>
+    <string name="no_devices_hint">Make sure your phone is on the same Wi-Fi network as the Apple TV.</string>
+    <string name="dismiss">Dismiss</string>
+    <string name="wake_and_retry">Wake %1$s and retry</string>
+
+    <!-- Pairing -->
+    <string name="pin_enable_now_playing">Enable Now Playing</string>
+    <string name="pin_pair_with">Pair with %1$s</string>
+    <string name="pin_airplay_hint">Now Playing uses a separate AirPlay pairing. Enter the new code shown on your TV.</string>
+    <string name="pin_hint">Enter the 4-digit code shown on your TV.</string>
+    <string name="pairing">Pairing…</string>
+    <string name="pair">Pair</string>
+    <string name="cancel">Cancel</string>
+    <string name="pin_expires">The code expires quickly — if pairing fails, cancel and try again.</string>
+
+    <!-- Remote header -->
+    <string name="cd_disconnect">Disconnect</string>
+    <string name="cd_keyboard">Keyboard</string>
+    <string name="cd_apps">Apps</string>
+    <string name="cd_power">Control Centre, or hold to wake</string>
+    <string name="connected">Connected</string>
+    <string name="reconnecting">Reconnecting…</string>
+    <string name="volume_percent">Volume %1$d%%</string>
+
+    <!-- Pad and transport -->
+    <string name="cd_up">Up</string>
+    <string name="cd_down">Down</string>
+    <string name="cd_left">Left</string>
+    <string name="cd_right">Right</string>
+    <string name="menu">Menu</string>
+    <string name="play">Play</string>
+    <string name="pause">Pause</string>
+    <string name="home">Home</string>
+    <string name="volume_down">Volume down</string>
+    <string name="volume_up">Volume up</string>
+    <string name="skip_back">Back 10 seconds</string>
+    <string name="skip_forward">Forward 10 seconds</string>
+
+    <!-- Now playing -->
+    <string name="nothing_playing">Nothing playing</string>
+    <string name="state_seeking">Seeking</string>
+    <string name="state_stopped">Stopped</string>
+    <string name="state_interrupted">Interrupted</string>
+    <string name="show_playing">Show what\'s playing</string>
+    <string name="needs_second_pairing">Needs a second pairing code from the TV</string>
+    <string name="set_up">Set up</string>
+
+    <!-- Text entry -->
+    <string name="type_on_tv">Type on the Apple TV</string>
+    <string name="send_text">Send text</string>
+    <string name="clear_field">Clear field</string>
+    <string name="checking_field">Checking for a focused field…</string>
+    <string name="no_field">No text field focused on the Apple TV.</string>
+    <string name="field_empty">Field is empty.</string>
+    <string name="field_is">Field: \"%1$s\"</string>
+
+    <!-- Apps -->
+    <string name="loading_apps">Loading apps…</string>
+
+    <!-- Errors -->
+    <string name="err_lost_connection">Lost connection to the Apple TV. Check it is awake and on the same network.</string>
+    <string name="err_generic">Something went wrong</string>
+    <string name="err_pairing_start">Could not start pairing: %1$s</string>
+    <string name="err_pairing_failed">Pairing failed</string>
+    <string name="err_airplay_pairing_failed">AirPlay pairing failed</string>
+    <string name="err_airplay_pairing_start">Could not start AirPlay pairing: %1$s</string>
+    <string name="err_stale_pairing">Pairing was removed on the Apple TV — pair again.</string>
+    <string name="err_connect">Could not connect: %1$s</string>
+    <string name="err_no_field">No text field is focused on the Apple TV.</string>
+    <string name="wake_failed">Couldn\'t wake the Apple TV</string>
+
+    <!-- Notifications -->
+    <string name="notif_type">Type</string>
+    <string name="notif_type_here">Type here</string>
+    <string name="notif_type_title">Type on %1$s</string>
+    <string name="notif_type_body">The Apple TV is asking for text</string>
+    <string name="notif_channel_keyboard">Keyboard</string>
+    <string name="notif_channel_keyboard_desc">Offers the keyboard when the Apple TV asks for text</string>
+    <string name="notif_channel_nowplaying">Now playing</string>
+    <string name="notif_channel_nowplaying_desc">Controls for what the Apple TV is playing</string>
 </resources>

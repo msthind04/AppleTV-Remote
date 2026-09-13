@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 设备列表 -->
+    <string name="app_name">Apple TV 遥控器</string>
+    <string name="devices_subtitle">网络中的设备</string>
+    <string name="device_paired">已配对</string>
+    <string name="device_pair">配对</string>
+    <string name="scan_again">重新扫描</string>
+    <string name="connecting">正在连接…</string>
+    <string name="scanning">正在扫描…</string>
+    <string name="no_devices">未找到 Apple TV</string>
+    <string name="no_devices_hint">请确保手机与 Apple TV 在同一 Wi-Fi 网络。</string>
+    <string name="dismiss">关闭</string>
+    <string name="wake_and_retry">唤醒 %1$s 并重连</string>
+
+    <!-- 配对 -->
+    <string name="pin_enable_now_playing">开启“正在播放”</string>
+    <string name="pin_pair_with">与 %1$s 配对</string>
+    <string name="pin_airplay_hint">“正在播放”需要单独的 AirPlay 配对。请输入电视上新显示的配对码。</string>
+    <string name="pin_hint">输入电视上显示的 4 位配对码。</string>
+    <string name="pairing">正在配对…</string>
+    <string name="pair">配对</string>
+    <string name="cancel">取消</string>
+    <string name="pin_expires">配对码有效期很短——如果配对失败，请取消后重试。</string>
+
+    <!-- 遥控器标题栏 -->
+    <string name="cd_disconnect">断开连接</string>
+    <string name="cd_keyboard">键盘</string>
+    <string name="cd_apps">应用</string>
+    <string name="cd_power">控制中心，长按唤醒</string>
+    <string name="connected">已连接</string>
+    <string name="reconnecting">正在重连…</string>
+    <string name="volume_percent">音量 %1$d%%</string>
+
+    <!-- 触摸板与按键 -->
+    <string name="cd_up">上</string>
+    <string name="cd_down">下</string>
+    <string name="cd_left">左</string>
+    <string name="cd_right">右</string>
+    <string name="menu">返回</string>
+    <string name="play">播放</string>
+    <string name="pause">暂停</string>
+    <string name="home">主屏幕</string>
+    <string name="volume_down">音量减</string>
+    <string name="volume_up">音量加</string>
+    <string name="skip_back">快退 10 秒</string>
+    <string name="skip_forward">快进 10 秒</string>
+
+    <!-- 正在播放 -->
+    <string name="nothing_playing">没有正在播放的内容</string>
+    <string name="state_seeking">正在跳转</string>
+    <string name="state_stopped">已停止</string>
+    <string name="state_interrupted">已中断</string>
+    <string name="show_playing">显示正在播放</string>
+    <string name="needs_second_pairing">需要电视上出示第二个配对码</string>
+    <string name="set_up">设置</string>
+
+    <!-- 文字输入 -->
+    <string name="type_on_tv">在 Apple TV 上输入</string>
+    <string name="send_text">发送</string>
+    <string name="clear_field">清空</string>
+    <string name="checking_field">正在检查焦点输入框…</string>
+    <string name="no_field">Apple TV 上没有聚焦的输入框。</string>
+    <string name="field_empty">输入框为空。</string>
+    <string name="field_is">内容：“%1$s”</string>
+
+    <!-- 应用 -->
+    <string name="loading_apps">正在加载应用…</string>
+
+    <!-- 错误 -->
+    <string name="err_lost_connection">与 Apple TV 的连接已断开。请检查电视是否已唤醒并在同一网络。</string>
+    <string name="err_generic">出了点问题</string>
+    <string name="err_pairing_start">无法开始配对：%1$s</string>
+    <string name="err_pairing_failed">配对失败</string>
+    <string name="err_airplay_pairing_failed">AirPlay 配对失败</string>
+    <string name="err_airplay_pairing_start">无法开始 AirPlay 配对：%1$s</string>
+    <string name="err_stale_pairing">Apple TV 上的配对已被移除——请重新配对。</string>
+    <string name="err_connect">无法连接：%1$s</string>
+    <string name="err_no_field">Apple TV 上没有聚焦的输入框。</string>
+    <string name="wake_failed">唤醒 Apple TV 失败</string>
+
+    <!-- 通知 -->
+    <string name="notif_type">输入</string>
+    <string name="notif_type_here">在此输入</string>
+    <string name="notif_type_title">在 %1$s 上输入</string>
+    <string name="notif_type_body">Apple TV 正在请求输入文字</string>
+    <string name="notif_channel_keyboard">键盘</string>
+    <string name="notif_channel_keyboard_desc">在 Apple TV 请求输入时提供键盘</string>
+    <string name="notif_channel_nowplaying">正在播放</string>
+    <string name="notif_channel_nowplaying_desc">控制 Apple TV 的播放</string>
+</resources>

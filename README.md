@@ -1,5 +1,7 @@
 # Remote for Apple TV — Android
 
+[中文说明](README.zh-CN.md)
+
 An open-source **Apple TV remote for Android**. It speaks Apple's Companion
 Link protocol natively in Kotlin, so there is no companion server, no Python
 bridge, and nothing to run on a Raspberry Pi — just an APK on your phone.
@@ -13,8 +15,11 @@ Works with modern Apple TVs, where older DMAP-based remote apps no longer do.
 ## Features
 
 - **Discovery** — finds Apple TVs on your network automatically
-- **D-pad** and a switchable **trackpad** for swipe scrolling. Holding the
-  centre sends a long press, which is how tvOS opens contextual menus
+- **Siri-Remote-style pad** — directional buttons around the rim, a touch
+  surface in the middle. Swiping streams real touch samples with a
+  pointer-ballistics curve, so momentum scrolling behaves like the hardware
+  remote; tap selects, holding the surface sends a long press, which is how
+  tvOS opens contextual menus
 - **Menu, Home, Play/Pause** — the play button reflects real playback state
 - **Power** — tap opens Control Centre, as the remote's own power button does;
   hold to wake a sleeping Apple TV
@@ -29,6 +34,24 @@ Works with modern Apple TVs, where older DMAP-based remote apps no longer do.
   scrubber you can drag to seek, 10-second skips and volume
 - **Media notification** — the same controls in the notification shade and on
   the lock screen, so the phone need not be unlocked to use them
+
+## What's changed
+
+- The D-pad and trackpad are merged into one Siri-Remote-style pad: directional
+  buttons on the rim, a touch surface in the middle, and the whole surface is
+  live — swipes no longer depend on where the finger lands
+- The layout is adaptive: the pad takes whatever height is left, the app drawer
+  owns landscape outright, and the now-playing card stays put instead of
+  jolting the column when playback state arrives
+- Faster startup: the last device appears instantly and, if it is the only
+  pairing, the app connects straight into the remote
+- Wake & retry: when a connect fails because the Apple TV is asleep, one button
+  nudges it awake and reconnects
+- Simplified now-playing card (±10 s skips; play/pause lives in the transport
+  row), hold-to-repeat volume, haptic ticks, and the keyboard panel folds when
+  OK is pressed on the TV
+- zh-CN localization and a light theme alongside the dark one
+- Fixed an intermittent startup crash in the touch-event pipeline
 
 ## Install
 
