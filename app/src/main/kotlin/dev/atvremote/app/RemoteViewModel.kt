@@ -18,6 +18,7 @@ import dev.atvremote.protocol.airplay.AirPlayConnection
 import dev.atvremote.protocol.mrp.NowPlaying
 import dev.atvremote.protocol.mrp.PlaybackState
 import dev.atvremote.protocol.discovery.AppleTvDevice
+import dev.atvremote.protocol.hap.HapException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -123,6 +124,9 @@ class RemoteViewModel(app: Application) : AndroidViewModel(app) {
 
     private val discovery = NsdDiscovery(app)
     private val store = CredentialStore(app)
+
+    /** Sent during pairing; it is what the Apple TV lists us as. */
+    private val deviceName = app.ownDeviceName()
 
     /** Network work outlives individual composables, so it gets its own scope. */
     private val netScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -342,7 +346,7 @@ class RemoteViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 val client = CompanionClient(device.address, device.port, netScope)
                 client.connect()
-                pairingSession = client.startPairing()
+                pairingSession = client.startPairing(deviceName)
                 pairingClient = client
                 _state.update { it.copy(busy = false, screen = Screen.PinEntry(device)) }
             } catch (e: Exception) {
@@ -431,7 +435,7 @@ class RemoteViewModel(app: Application) : AndroidViewModel(app) {
     ): AppleTvRemote {
         remote?.let { runCatching { it.close() } }
 
-        val r = AppleTvRemote(device.address, device.port, credentials, netScope)
+        val r = AppleTvRemote(device.address, device.port, credentials, netScope, deviceName)
         r.onDisconnect = {
             // Reflect reality rather than leaving a stale "Connected" label.
             // The next command reconnects on demand.
@@ -497,11 +501,31 @@ class RemoteViewModel(app: Application) : AndroidViewModel(app) {
             _state.update { it.copy(reconnecting = false, error = null) }
             startNowPlaying(device)
             r
+        } catch (e: HapException) {
+            // The TV forgot us while we were connected; the remote screen
+            // is no longer usable, so send the user back to pair again.
+            remote = null
+            forgetPairing(known)
+            _state.update {
+                it.copy(
+                    reconnecting = false,
+                    screen = Screen.DeviceList,
+                    error = str(R.string.err_stale_pairing),
+                ).withNowPlaying(null)
+            }
+            scan()
+            null
         } catch (e: Exception) {
             remote = null
             _state.update { it.copy(reconnecting = false) }
             null
         }
+    }
+
+    /** Drop the Companion pairing and stop listing the device as paired. */
+    private fun forgetPairing(device: AppleTvDevice) {
+        store.forget(device.credentialKey)
+        _state.update { it.copy(pairedKeys = it.pairedKeys - device.credentialKey) }
     }
 
     private fun str(id: Int, vararg args: Any?): String =
@@ -557,11 +581,12 @@ class RemoteViewModel(app: Application) : AndroidViewModel(app) {
                 startNowPlaying(device)
             } catch (e: Exception) {
                 remote = null
-                // Stale credentials are the common cause; drop them so the next
-                // attempt re-pairs instead of failing forever.
-                val stale = e.message?.contains("credentials", ignoreCase = true) == true ||
-                    e.message?.contains("identity mismatch", ignoreCase = true) == true
-                if (stale) store.forget(device.credentialKey)
+                // Pair-verify only fails when the stored credentials are
+                // unusable — most often because the pairing was removed on
+                // the Apple TV. Drop them so the next tap pairs afresh
+                // instead of failing forever.
+                val stale = e is HapException
+                if (stale) forgetPairing(device)
                 _state.update {
                     it.copy(
                         busy = false,
@@ -588,7 +613,7 @@ class RemoteViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 ap2?.close()
                 _state.update { it.copy(nowPlayingError = null) }
-                val session = Ap2Session(device.address, credentials, netScope)
+                val session = Ap2Session(device.address, credentials, netScope, deviceName)
                 session.onNowPlaying = { np ->
                     _state.update { it.withNowPlaying(np) }
                 }
@@ -600,7 +625,16 @@ class RemoteViewModel(app: Application) : AndroidViewModel(app) {
                 // Now-playing is optional; a failure here must not break the
                 // remote, but it must still be visible rather than silent.
                 android.util.Log.w("atv", "now-playing tunnel failed", e)
-                _state.update { it.withNowPlaying(null).copy(nowPlayingError = e.message) }
+                if (e is HapException) {
+                    // The AirPlay pairing is a separate entry on the TV and
+                    // can be removed on its own; put the pair button back.
+                    store.forgetAirPlay(device.credentialKey)
+                    _state.update {
+                        it.withNowPlaying(null).copy(airplayPaired = false, nowPlayingError = null)
+                    }
+                } else {
+                    _state.update { it.withNowPlaying(null).copy(nowPlayingError = e.message) }
+                }
             }
         }
     }
@@ -612,7 +646,7 @@ class RemoteViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 val connection = AirPlayConnection(device.address, 7000)
                 connection.connect()
-                airplayPairing = AirPlayAuth.startPairing(connection)
+                airplayPairing = AirPlayAuth.startPairing(connection, deviceName)
                 airplayConnection = connection
                 _state.update {
                     it.copy(busy = false, screen = Screen.PinEntry(device, forAirPlay = true))
@@ -670,7 +704,11 @@ class RemoteViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 val revived = reconnect()
                 if (revived == null) {
-                    _state.update { it.copy(error = friendlyError(e)) }
+                    // reconnect() has already explained a rejected pairing
+                    // and left the remote screen; don't paper over that.
+                    if (_state.value.screen is Screen.Remote) {
+                        _state.update { it.copy(error = friendlyError(e)) }
+                    }
                     return@launch
                 }
                 runCatching { withContext(Dispatchers.IO) { revived.block() } }
@@ -746,7 +784,7 @@ class RemoteViewModel(app: Application) : AndroidViewModel(app) {
         val credentials = store.load(device.credentialKey) ?: return
         _state.update { it.copy(busy = true, error = null, wakeTarget = null) }
         netScope.launch {
-            val woke = runCatching {
+            val result = runCatching {
                 val client = CompanionClient(device.address, device.port, netScope)
                 try {
                     client.connect()
@@ -755,12 +793,18 @@ class RemoteViewModel(app: Application) : AndroidViewModel(app) {
                 } finally {
                     client.close()
                 }
-            }.isSuccess
-            if (woke) {
-                delay(2500)
-                connect(device)
-            } else {
-                _state.update { it.copy(busy = false, error = str(R.string.wake_failed)) }
+            }
+            val failure = result.exceptionOrNull()
+            when {
+                failure == null -> {
+                    delay(2500)
+                    connect(device)
+                }
+                failure is HapException -> {
+                    forgetPairing(device)
+                    _state.update { it.copy(busy = false, error = str(R.string.err_stale_pairing)) }
+                }
+                else -> _state.update { it.copy(busy = false, error = str(R.string.wake_failed)) }
             }
         }
     }

@@ -70,7 +70,7 @@ object AirPlayAuth {
     ): PairVerifySession {
         val session = PairVerifySession(credentials)
         val m2 = postTlv(connection, "/pair-verify", session.startRequest())
-        postTlv(connection, "/pair-verify", session.finishRequest(m2))
+        session.finish(postTlv(connection, "/pair-verify", session.finishRequest(m2)))
 
         // The control connection itself is encrypted with the "Control-Salt"
         // key pair; the event and data channels derive their own below.

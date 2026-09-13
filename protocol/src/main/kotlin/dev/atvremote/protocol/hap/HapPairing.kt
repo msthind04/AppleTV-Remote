@@ -6,7 +6,7 @@ import dev.atvremote.protocol.crypto.Srp
 import dev.atvremote.protocol.opack.Opack
 import java.util.UUID
 
-class HapException(message: String) : Exception(message)
+class HapException(message: String, val error: HapError? = null) : Exception(message)
 
 /**
  * Transport-agnostic HAP pair-setup and pair-verify.
@@ -16,18 +16,30 @@ class HapException(message: String) : Exception(message)
  * These classes deal only in TLV8 maps so both can share the crypto.
  */
 object HapErrors {
-    fun check(tlv: Map<Int, ByteArray>) {
+    /**
+     * Throw if the device answered with an error TLV.
+     *
+     * The same authentication code means different things in the two
+     * handshakes: a wrong PIN during pair-setup, but during pair-verify it
+     * is the device saying it no longer holds our pairing — the user removed
+     * it from the Apple TV's Remotes list.
+     */
+    fun check(tlv: Map<Int, ByteArray>, verifying: Boolean = false) {
         val err = tlv[TlvValue.ERROR] ?: return
         val code = err.firstOrNull()?.toInt() ?: 0
+        val error = HapError.from(code)
         throw HapException(
-            when (HapError.from(code)) {
-                HapError.AUTHENTICATION -> "Incorrect PIN"
+            when (error) {
+                HapError.AUTHENTICATION ->
+                    if (verifying) "credentials no longer recognised by the device"
+                    else "Incorrect PIN"
                 HapError.BACK_OFF -> "Device is rate-limiting pairing attempts; wait and retry"
                 HapError.MAX_TRIES -> "Too many failed attempts; restart the Apple TV"
                 HapError.MAX_PEERS -> "Device has reached its pairing limit"
                 HapError.UNAVAILABLE -> "Pairing unavailable on this device"
                 else -> "Pairing failed: 0x${code.toString(16)}"
-            }
+            },
+            error,
         )
     }
 }
@@ -139,7 +151,7 @@ class PairVerifySession(private val credentials: Credentials) {
 
     /** Validate the device's M2 and produce M3. */
     fun finishRequest(m2: Map<Int, ByteArray>): Map<Int, ByteArray> {
-        HapErrors.check(m2)
+        HapErrors.check(m2, verifying = true)
         val serverPublic = m2[TlvValue.PUBLIC_KEY] ?: throw HapException("missing session key")
         val encrypted = m2[TlvValue.ENCRYPTED_DATA] ?: throw HapException("missing data")
 
@@ -183,6 +195,15 @@ class PairVerifySession(private val credentials: Credentials) {
             TlvValue.SEQ_NO to byteArrayOf(0x03),
             TlvValue.ENCRYPTED_DATA to reply,
         )
+    }
+
+    /**
+     * Validate the device's M4. This is where a device that has forgotten
+     * the pairing says so; it accepts M1 happily and only rejects once it
+     * has seen our identifier in M3.
+     */
+    fun finish(m4: Map<Int, ByteArray>) {
+        HapErrors.check(m4, verifying = true)
     }
 
     /** Derive a (output, input) key pair for one logical channel. */

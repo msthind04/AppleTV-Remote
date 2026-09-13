@@ -240,7 +240,8 @@ class CompanionClient(
         val m2 = authExchange(
             FrameType.PV_START, verify.startRequest(), mapOf("_auTy" to 4), timeoutMs = 10_000
         )
-        authExchange(FrameType.PV_NEXT, verify.finishRequest(m2), timeoutMs = 10_000)
+        val m4 = authExchange(FrameType.PV_NEXT, verify.finishRequest(m2), timeoutMs = 10_000)
+        verify.finish(m4)
 
         val (outputKey, inputKey) = verify.encryptionKeys(
             SRP_SALT, SRP_OUTPUT_INFO, SRP_INPUT_INFO

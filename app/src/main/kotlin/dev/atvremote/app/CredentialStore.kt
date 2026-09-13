@@ -83,4 +83,5 @@ class CredentialStore(context: Context) {
     fun saveAirPlay(key: String, credentials: Credentials) = save(airplayKey(key), credentials)
     fun loadAirPlay(key: String): Credentials? = load(airplayKey(key))
     fun isAirPlayPaired(key: String): Boolean = isPaired(airplayKey(key))
+    fun forgetAirPlay(key: String) = forget(airplayKey(key))
 }
