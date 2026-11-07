@@ -4,10 +4,13 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
-    <!-- Required from Android 13 for local network service discovery. -->
-    <uses-permission
-        android:name="android.permission.NEARBY_WIFI_DEVICES"
-        android:usesPermissionFlags="neverForLocation" />
+    <!--
+      Wi-Fi is what the app normally uses, but nothing here hard-requires the
+      radio: a tablet or Chromebook on Ethernet can still reach an Apple TV,
+      and Play would otherwise hide the app from it.
+    -->
+    <uses-feature android:name="android.hardware.wifi" android:required="false" />
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
 
     <!--
       The media notification runs in a foreground service because that is what

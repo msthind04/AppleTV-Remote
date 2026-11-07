@@ -3,6 +3,7 @@ package dev.danielclements.puck
 import android.content.Context
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
+import android.os.Build
 import dev.atvremote.protocol.discovery.AppleTvDevice
 import dev.atvremote.protocol.discovery.COMPANION_SERVICE_TYPE
 import dev.atvremote.protocol.discovery.DeviceDiscovery
@@ -12,6 +13,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import java.net.Inet4Address
 import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.coroutines.resume
 
@@ -67,7 +69,7 @@ class NsdDiscovery(context: Context) : DeviceDiscovery {
 
                 override fun onServiceResolved(serviceInfo: NsdServiceInfo) {
                     if (!cont.isActive) return
-                    val host = serviceInfo.host?.hostAddress
+                    val host = bestAddress(serviceInfo)
                     cont.resume(
                         if (host == null) null else AppleTvDevice(
                             name = serviceInfo.serviceName,
@@ -80,6 +82,23 @@ class NsdDiscovery(context: Context) : DeviceDiscovery {
                 }
             })
         }
+
+    /**
+     * An Apple TV advertises IPv4 and IPv6 (including link-local fe80::
+     * addresses that need a scope id to be reachable). Prefer a plain IPv4
+     * address: it is what the user sees, what add-by-IP produces, and it
+     * survives a network change without a stale interface scope.
+     */
+    @Suppress("DEPRECATION")
+    private fun bestAddress(info: NsdServiceInfo): String? {
+        val all = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            info.hostAddresses
+        } else {
+            listOfNotNull(info.host)
+        }
+        val pick = all.firstOrNull { it is Inet4Address } ?: all.firstOrNull()
+        return pick?.hostAddress
+    }
 
     private fun NsdServiceInfo.txt(key: String): String? =
         attributes[key]?.toString(Charsets.UTF_8)

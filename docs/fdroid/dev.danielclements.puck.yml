@@ -36,7 +36,7 @@ Description: |-
 
     * A plain glass trackpad (tap an edge to step, hold to repeat, swipe to
       pan and scroll) or, in Settings, a classic D-pad
-    * Back, Home, Play/Pause, volume with mute, and Power (tap for Control
+    * Back, Home, Play/Pause, volume, and Power (tap for Control
       Centre, hold to wake)
     * App drawer with real tvOS app icons
     * Text entry from your phone's keyboard, with a lock-screen reply prompt
@@ -54,9 +54,9 @@ RepoType: git
 Repo: https://github.com/iamclements/puck.git
 
 Builds:
-  - versionName: '1.0'
-    versionCode: 1
-    commit: v1.0
+  - versionName: '1.4.1'
+    versionCode: 7
+    commit: v1.4.1
     subdir: app
     gradle:
       - yes

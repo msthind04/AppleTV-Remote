@@ -49,7 +49,6 @@ collects anything about you or how you use the app.
 | Permission | Why |
 |---|---|
 | Internet, network/Wi-Fi state | Talk to your Apple TV on the local network, and the one iTunes lookup above |
-| Nearby Wi-Fi devices | Required by Android 13+ for local network service discovery (mDNS); declared `neverForLocation`, so it does not grant location access |
 | Notifications | The now-playing media notification and the keyboard reply prompt |
 | Foreground service (media playback) | Keeps the connection to your Apple TV alive while the now-playing notification is shown |
 

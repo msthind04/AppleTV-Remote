@@ -49,7 +49,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.sp
 import dev.danielclements.puck.R
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.windowInsetsPadding
 
 @Composable
@@ -68,7 +70,7 @@ fun DeviceListScreen(state: UiState, vm: RemoteViewModel) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .windowInsetsPadding(WindowInsets.systemBars)
+            .windowInsetsPadding(WindowInsets.systemBars.union(WindowInsets.displayCutout))
             .padding(horizontal = 16.dp)
             .padding(top = 18.dp, bottom = 22.dp),
     ) {
